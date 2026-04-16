@@ -36,16 +36,18 @@ public class InterviewPersistenceService {
     private final InterviewAnswerRepository answerRepository;
     private final ResumeRepository resumeRepository;
     private final ObjectMapper objectMapper;
+    private final InterviewQuestionCollectionService collectionService;
     
     /**
      * 保存新的面试会话
      */
     @Transactional(rollbackFor = Exception.class)
-    public InterviewSessionEntity saveSession(String sessionId, Long resumeId, 
-                                              int totalQuestions, 
-                                              List<InterviewQuestionDTO> questions) {
+    public InterviewSessionEntity saveSession(String sessionId, Long resumeId,
+                                              int totalQuestions,
+                                              List<InterviewQuestionDTO> questions,
+                                              Long ownerUserId) {
         try {
-            Optional<ResumeEntity> resumeOpt = resumeRepository.findById(resumeId);
+            Optional<ResumeEntity> resumeOpt = resumeRepository.findByIdAndOwnerUserId(resumeId, ownerUserId);
             if (resumeOpt.isEmpty()) {
                 throw new BusinessException(ErrorCode.RESUME_NOT_FOUND);
             }
@@ -226,6 +228,10 @@ public class InterviewPersistenceService {
             }
 
             answerRepository.saveAll(answersToSave);
+
+            // 评估完成后，回填已收藏题目的标准答案到知识库文档
+            collectionService.syncCollectedQuestionsAfterEvaluation(sessionId);
+
             log.info("面试报告已保存: sessionId={}, score={}, 答案数={}",
                 sessionId, report.overallScore(), answersToSave.size());
 
@@ -239,6 +245,24 @@ public class InterviewPersistenceService {
      */
     public Optional<InterviewSessionEntity> findBySessionId(String sessionId) {
         return sessionRepository.findBySessionId(sessionId);
+    }
+
+    public Optional<InterviewSessionEntity> findBySessionIdAndResumeOwnerUserId(String sessionId, Long userId) {
+        return sessionRepository.findBySessionIdAndResumeOwnerUserId(sessionId, userId);
+    }
+
+    /**
+     * 校验简历归属；不通过则抛出简历不存在（避免枚举资源）
+     */
+    public void assertResumeOwnedBy(Long resumeId, Long userId) {
+        if (!resumeRepository.existsByIdAndOwnerUserId(resumeId, userId)) {
+            throw new BusinessException(ErrorCode.RESUME_NOT_FOUND);
+        }
+    }
+
+    public InterviewSessionEntity requireSessionOwnedByUser(String sessionId, Long userId) {
+        return sessionRepository.findBySessionIdAndResumeOwnerUserId(sessionId, userId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.INTERVIEW_SESSION_NOT_FOUND));
     }
     
     /**
@@ -276,6 +300,14 @@ public class InterviewPersistenceService {
         } else {
             throw new BusinessException(ErrorCode.INTERVIEW_SESSION_NOT_FOUND);
         }
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteSessionBySessionIdForUser(String sessionId, Long userId) {
+        InterviewSessionEntity session = sessionRepository.findBySessionIdAndResumeOwnerUserId(sessionId, userId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.INTERVIEW_SESSION_NOT_FOUND));
+        sessionRepository.delete(session);
+        log.info("已删除面试会话: sessionId={}, userId={}", sessionId, userId);
     }
     
     /**

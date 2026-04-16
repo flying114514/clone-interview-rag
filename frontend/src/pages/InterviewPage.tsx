@@ -1,19 +1,14 @@
-import {useEffect, useState} from 'react';
-import {AnimatePresence, motion} from 'framer-motion';
+import {useEffect, useRef, useState} from 'react';
 import {interviewApi} from '../api/interview';
 import ConfirmDialog from '../components/ConfirmDialog';
 import InterviewConfigPanel from '../components/InterviewConfigPanel';
-import InterviewChatPanel from '../components/InterviewChatPanel';
+import ChatArea from '../components/interview/ChatArea';
+import Sidebar from '../components/interview/Sidebar';
 import type {InterviewQuestion, InterviewSession} from '../types/interview';
+import type {InterviewChatMessage} from '../types/interviewChat';
 
 type InterviewStage = 'config' | 'interview';
-
-interface Message {
-  type: 'interviewer' | 'user';
-  content: string;
-  category?: string;
-  questionIndex?: number;
-}
+type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 interface InterviewProps {
   resumeText: string;
@@ -22,12 +17,12 @@ interface InterviewProps {
   onInterviewComplete: () => void;
 }
 
-export default function Interview({ resumeText, resumeId, onBack, onInterviewComplete }: InterviewProps) {
+export default function Interview({resumeText, resumeId, onBack, onInterviewComplete}: InterviewProps) {
   const [stage, setStage] = useState<InterviewStage>('config');
   const [questionCount, setQuestionCount] = useState(8);
   const [session, setSession] = useState<InterviewSession | null>(null);
   const [currentQuestion, setCurrentQuestion] = useState<InterviewQuestion | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<InterviewChatMessage[]>([]);
   const [answer, setAnswer] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -36,14 +31,163 @@ export default function Interview({ resumeText, resumeId, onBack, onInterviewCom
   const [unfinishedSession, setUnfinishedSession] = useState<InterviewSession | null>(null);
   const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
   const [forceCreateNew, setForceCreateNew] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const [collectingQuestion, setCollectingQuestion] = useState(false);
+  const [collectHint, setCollectHint] = useState('');
+  const [submittedQuestionIndexes, setSubmittedQuestionIndexes] = useState<Set<number>>(new Set());
 
-  // 检查是否有未完成的面试（组件挂载时和resumeId变化时）
+  const buildSubmittedQuestionIndexes = (sessionData: InterviewSession): Set<number> => {
+    const submitted = new Set<number>();
+    const answered = sessionData.questions.filter(q => Boolean(q.userAnswer?.trim()));
+    const allAnswered = answered.length === sessionData.questions.length;
+
+    if (sessionData.status === 'COMPLETED' || sessionData.status === 'EVALUATED' || allAnswered) {
+      answered.forEach(q => submitted.add(q.questionIndex));
+      return submitted;
+    }
+
+    // 恢复中：仅把“当前题之前”视为已提交，当前题仍允许继续编辑/提交
+    answered.forEach(q => {
+      if (q.questionIndex < sessionData.currentQuestionIndex) {
+        submitted.add(q.questionIndex);
+      }
+    });
+
+    return submitted;
+  };
+
+  const autoSaveTimerRef = useRef<number | null>(null);
+  const lastSavedAnswerRef = useRef('');
+  const saveRequestSeqRef = useRef(0);
+  const currentSessionIdRef = useRef<string | null>(null);
+  const currentQuestionIndexRef = useRef<number | null>(null);
+  const currentAnswerRef = useRef('');
+  const isSubmittingRef = useRef(false);
+
+  const clearAutoSaveTimer = () => {
+    if (autoSaveTimerRef.current !== null) {
+      window.clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+  };
+
+  const syncDraftToSession = (sessionId: string, questionIndex: number, draftAnswer: string) => {
+    setSession(prev => {
+      if (!prev || prev.sessionId !== sessionId) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        status: prev.status === 'CREATED' ? 'IN_PROGRESS' : prev.status,
+        questions: prev.questions.map(question =>
+          question.questionIndex === questionIndex ? {...question, userAnswer: draftAnswer} : question
+        )
+      };
+    });
+
+    setCurrentQuestion(prev => {
+      if (!prev || prev.questionIndex !== questionIndex) {
+        return prev;
+      }
+      return {...prev, userAnswer: draftAnswer};
+    });
+  };
+
+  const saveDraftAnswer = async (sessionId: string, questionIndex: number, answerSnapshot: string) => {
+    const requestSeq = ++saveRequestSeqRef.current;
+    setSaveStatus('saving');
+
+    try {
+      await interviewApi.saveAnswer({
+        sessionId,
+        questionIndex,
+        answer: answerSnapshot
+      });
+
+      const isLatestRequest = saveRequestSeqRef.current === requestSeq;
+      const isSameContext =
+        currentSessionIdRef.current === sessionId &&
+        currentQuestionIndexRef.current === questionIndex &&
+        currentAnswerRef.current === answerSnapshot &&
+        !isSubmittingRef.current;
+
+      if (!isLatestRequest || !isSameContext) {
+        return;
+      }
+
+      lastSavedAnswerRef.current = answerSnapshot;
+      syncDraftToSession(sessionId, questionIndex, answerSnapshot);
+      setLastSavedAt(new Date().toISOString());
+      setSaveStatus('saved');
+    } catch (err) {
+      const isLatestRequest = saveRequestSeqRef.current === requestSeq;
+      const isSameContext =
+        currentSessionIdRef.current === sessionId &&
+        currentQuestionIndexRef.current === questionIndex &&
+        currentAnswerRef.current === answerSnapshot &&
+        !isSubmittingRef.current;
+
+      if (!isLatestRequest || !isSameContext) {
+        return;
+      }
+
+      console.error('自动保存失败', err);
+      setSaveStatus('error');
+    }
+  };
+
+  useEffect(() => {
+    currentSessionIdRef.current = session?.sessionId ?? null;
+    currentQuestionIndexRef.current = currentQuestion?.questionIndex ?? null;
+    currentAnswerRef.current = answer.trim();
+    isSubmittingRef.current = isSubmitting;
+  }, [answer, currentQuestion, isSubmitting, session]);
+
   useEffect(() => {
     if (resumeId) {
       checkUnfinishedSession();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resumeId]);
+
+  useEffect(() => {
+    clearAutoSaveTimer();
+    lastSavedAnswerRef.current = currentQuestion?.userAnswer?.trim() ?? '';
+    setSaveStatus('idle');
+    setLastSavedAt(null);
+    setCollectHint('');
+  }, [currentQuestion?.questionIndex, session?.sessionId]);
+
+  useEffect(() => {
+    if (stage !== 'interview' || !session || !currentQuestion || isSubmitting || submittedQuestionIndexes.has(currentQuestion.questionIndex)) {
+      clearAutoSaveTimer();
+      return;
+    }
+
+    const trimmedAnswer = answer.trim();
+
+    if (!trimmedAnswer || trimmedAnswer === lastSavedAnswerRef.current) {
+      clearAutoSaveTimer();
+      return;
+    }
+
+    clearAutoSaveTimer();
+    autoSaveTimerRef.current = window.setTimeout(() => {
+      void saveDraftAnswer(session.sessionId, currentQuestion.questionIndex, trimmedAnswer);
+    }, 1200);
+
+    return () => {
+      clearAutoSaveTimer();
+    };
+  }, [answer, currentQuestion, isSubmitting, session, stage, submittedQuestionIndexes]);
+
+  useEffect(() => {
+    return () => {
+      clearAutoSaveTimer();
+    };
+  }, []);
 
   const checkUnfinishedSession = async () => {
     if (!resumeId) return;
@@ -63,58 +207,53 @@ export default function Interview({ resumeText, resumeId, onBack, onInterviewCom
 
   const handleContinueUnfinished = () => {
     if (!unfinishedSession) return;
-    setForceCreateNew(false);  // 重置强制创建标志
+    setForceCreateNew(false);
     restoreSession(unfinishedSession);
     setUnfinishedSession(null);
   };
 
-    const handleStartNew = () => {
+  const handleStartNew = () => {
     setUnfinishedSession(null);
-    setForceCreateNew(true);  // 标记需要强制创建新会话
+    setForceCreateNew(true);
   };
 
-    const restoreSession = (sessionToRestore: InterviewSession) => {
+  const restoreSession = (sessionToRestore: InterviewSession) => {
     setSession(sessionToRestore);
+    setSubmittedQuestionIndexes(buildSubmittedQuestionIndexes(sessionToRestore));
 
-        // 恢复当前问题
     const currentQ = sessionToRestore.questions[sessionToRestore.currentQuestionIndex];
     if (currentQ) {
       setCurrentQuestion(currentQ);
+      setAnswer(currentQ.userAnswer ?? '');
 
-        // 如果当前问题已有答案，显示在输入框中
-      if (currentQ.userAnswer) {
-        setAnswer(currentQ.userAnswer);
-      }
-
-        // 恢复消息历史
-      const restoredMessages: Message[] = [];
+      const restoredMessages: InterviewChatMessage[] = [];
       for (let i = 0; i <= sessionToRestore.currentQuestionIndex; i++) {
-        const q = sessionToRestore.questions[i];
+        const question = sessionToRestore.questions[i];
         restoredMessages.push({
           type: 'interviewer',
-          content: q.question,
-          category: q.category,
+          content: question.question,
+          category: question.category,
           questionIndex: i
         });
-        if (q.userAnswer) {
+
+        if (question.userAnswer && i < sessionToRestore.currentQuestionIndex) {
           restoredMessages.push({
             type: 'user',
-            content: q.userAnswer
+            content: question.userAnswer
           });
         }
       }
       setMessages(restoredMessages);
     }
 
-        setStage('interview');
+    setStage('interview');
   };
 
-    const startInterview = async () => {
+  const startInterview = async () => {
     setIsCreating(true);
     setError('');
 
-        try {
-      // 创建新面试（如果 forceCreateNew 为 true，则强制创建新会话）
+    try {
       const newSession = await interviewApi.createSession({
         resumeText,
         questionCount,
@@ -122,51 +261,92 @@ export default function Interview({ resumeText, resumeId, onBack, onInterviewCom
         forceCreate: forceCreateNew
       });
 
-            // 重置强制创建标志
       setForceCreateNew(false);
 
-            // 如果返回的是未完成的会话（currentQuestionIndex > 0 或已有答案），恢复它
-            const hasProgress = newSession.currentQuestionIndex > 0 ||
-                          newSession.questions.some(q => q.userAnswer) ||
-                          newSession.status === 'IN_PROGRESS';
+      const hasProgress =
+        newSession.currentQuestionIndex > 0 ||
+        newSession.questions.some(question => question.userAnswer) ||
+        newSession.status === 'IN_PROGRESS';
 
-            if (hasProgress) {
-        // 这是恢复的会话
+      if (hasProgress) {
         restoreSession(newSession);
       } else {
-        // 全新的会话
         setSession(newSession);
+        setSubmittedQuestionIndexes(new Set());
 
-                if (newSession.questions.length > 0) {
+        if (newSession.questions.length > 0) {
           const firstQuestion = newSession.questions[0];
           setCurrentQuestion(firstQuestion);
-          setMessages([{
-            type: 'interviewer',
-            content: firstQuestion.question,
-            category: firstQuestion.category,
-            questionIndex: 0
-          }]);
+          setMessages([
+            {
+              type: 'interviewer',
+              content: firstQuestion.question,
+              category: firstQuestion.category,
+              questionIndex: 0
+            }
+          ]);
         }
 
-                setStage('interview');
+        setAnswer('');
+        setStage('interview');
       }
     } catch (err) {
       setError('创建面试失败，请重试');
       console.error(err);
-      setForceCreateNew(false);  // 出错时也重置标志
+      setForceCreateNew(false);
     } finally {
       setIsCreating(false);
     }
   };
 
-    const handleSubmitAnswer = async () => {
-    if (!answer.trim() || !session || !currentQuestion) return;
+  const handleSelectQuestion = (questionIndex: number) => {
+    if (!session) return;
 
+    if (currentQuestion) {
+      const draft = answer;
+      syncDraftToSession(session.sessionId, currentQuestion.questionIndex, draft);
+    }
+
+    const target = session.questions.find(q => q.questionIndex === questionIndex);
+    if (!target) return;
+
+    setCurrentQuestion(target);
+    setAnswer(target.userAnswer ?? '');
+    setCollectHint('');
+
+    const rebuiltMessages: InterviewChatMessage[] = [];
+    for (let i = 0; i <= questionIndex; i++) {
+      const q = session.questions[i];
+      if (!q) continue;
+      rebuiltMessages.push({
+        type: 'interviewer',
+        content: q.question,
+        category: q.category,
+        questionIndex: q.questionIndex,
+      });
+      if (q.userAnswer?.trim()) {
+        rebuiltMessages.push({
+          type: 'user',
+          content: q.userAnswer,
+        });
+      }
+    }
+    setMessages(rebuiltMessages);
+  };
+
+  const handleSubmitAnswer = async () => {
+    if (!session || !currentQuestion || isSubmitting) return;
+
+    const trimmedAnswer = answer.trim();
+    if (!trimmedAnswer || submittedQuestionIndexes.has(currentQuestion.questionIndex)) return;
+
+    clearAutoSaveTimer();
     setIsSubmitting(true);
+    setError('');
 
-    const userMessage: Message = {
+    const userMessage: InterviewChatMessage = {
       type: 'user',
-      content: answer
+      content: trimmedAnswer
     };
     setMessages(prev => [...prev, userMessage]);
 
@@ -174,39 +354,159 @@ export default function Interview({ resumeText, resumeId, onBack, onInterviewCom
       const response = await interviewApi.submitAnswer({
         sessionId: session.sessionId,
         questionIndex: currentQuestion.questionIndex,
-        answer: answer.trim()
+        answer: trimmedAnswer
       });
 
-      setAnswer('');
+      setSubmittedQuestionIndexes(prev => {
+        const next = new Set(prev);
+        next.add(currentQuestion.questionIndex);
+        return next;
+      });
+
+      lastSavedAnswerRef.current = trimmedAnswer;
+      syncDraftToSession(session.sessionId, currentQuestion.questionIndex, trimmedAnswer);
 
       if (response.hasNextQuestion && response.nextQuestion) {
-        setCurrentQuestion(response.nextQuestion);
-        setMessages(prev => [...prev, {
-          type: 'interviewer',
-          content: response.nextQuestion!.question,
-          category: response.nextQuestion!.category,
-          questionIndex: response.nextQuestion!.questionIndex
-        }]);
+        setSession(prev => {
+          if (!prev || prev.sessionId !== session.sessionId) {
+            return prev;
+          }
+
+          return {
+            ...prev,
+            currentQuestionIndex: response.currentIndex,
+            status: 'IN_PROGRESS',
+            questions: prev.questions.map(question => {
+              if (question.questionIndex === currentQuestion.questionIndex) {
+                return {...question, userAnswer: trimmedAnswer};
+              }
+              if (question.questionIndex === response.nextQuestion!.questionIndex) {
+                return response.nextQuestion!;
+              }
+              return question;
+            })
+          };
+        });
+
+        setCurrentQuestion(prev => (prev ? {...prev, userAnswer: trimmedAnswer} : prev));
+        setAnswer(trimmedAnswer);
+        setCollectHint('已保存本题回答，可切到任意题继续作答或收藏');
       } else {
-        // 面试已完成，评估将在后台进行，跳转到面试记录页
-        onInterviewComplete();
+        setSession(prev => {
+          if (!prev || prev.sessionId !== session.sessionId) {
+            return prev;
+          }
+
+          return {
+            ...prev,
+            status: 'IN_PROGRESS',
+            questions: prev.questions.map(question =>
+              question.questionIndex === currentQuestion.questionIndex
+                ? {...question, userAnswer: trimmedAnswer}
+                : question
+            )
+          };
+        });
+        setCurrentQuestion(prev => (prev ? {...prev, userAnswer: trimmedAnswer} : prev));
+        setAnswer(trimmedAnswer);
+        setCollectHint('所有题目已完成，请点击右上角“提前交卷”按钮结束本场面试');
       }
     } catch (err) {
-      setError('提交答案失败，请重试');
+      const msg = err instanceof Error ? err.message : '提交答案失败，请重试';
+      if (msg.includes('已提交')) {
+        setSubmittedQuestionIndexes(prev => {
+          const next = new Set(prev);
+          next.add(currentQuestion.questionIndex);
+          return next;
+        });
+        setCurrentQuestion(prev => (prev ? {...prev, userAnswer: trimmedAnswer} : prev));
+        setCollectHint('本题已提交，不能重复提交，请切换下一题继续作答');
+      } else {
+        setError('提交答案失败，请重试');
+      }
       console.error(err);
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const handleCollectQuestion = async () => {
+    if (!session || !currentQuestion || collectingQuestion) return;
+
+    const collectStart = Date.now();
+    setCollectingQuestion(true);
+    setError('');
+    try {
+      const draftAnswer = answer.trim();
+      if (draftAnswer) {
+        await interviewApi.saveAnswer({
+          sessionId: session.sessionId,
+          questionIndex: currentQuestion.questionIndex,
+          answer: draftAnswer,
+        });
+        syncDraftToSession(session.sessionId, currentQuestion.questionIndex, draftAnswer);
+        lastSavedAnswerRef.current = draftAnswer;
+      }
+
+      if (currentQuestion.collected) {
+        await interviewApi.uncollectQuestion(session.sessionId, currentQuestion.questionIndex);
+        setSession(prev => {
+          if (!prev || prev.sessionId !== session.sessionId) return prev;
+          return {
+            ...prev,
+            questions: prev.questions.map(q =>
+              q.questionIndex === currentQuestion.questionIndex ? {...q, collected: false} : q
+            )
+          };
+        });
+        setCurrentQuestion(prev => (prev ? {...prev, collected: false} : prev));
+        setCollectHint('已取消收藏该题');
+        return;
+      }
+
+      const result = await interviewApi.collectQuestion(session.sessionId, currentQuestion.questionIndex);
+
+      setSession(prev => {
+        if (!prev || prev.sessionId !== session.sessionId) return prev;
+        return {
+          ...prev,
+          questions: prev.questions.map(q =>
+            q.questionIndex === currentQuestion.questionIndex ? {...q, collected: result.collected} : q
+          )
+        };
+      });
+      setCurrentQuestion(prev => (prev ? {...prev, collected: result.collected} : prev));
+      setCollectHint(
+        result.alreadyCollected
+          ? `该题已更新到知识库（${result.knowledgeBaseCategory}）`
+          : `该题已被收录知识库（${result.knowledgeBaseCategory}）`
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '收藏失败，请稍后重试';
+      if (msg.includes('当前题目还没有可收藏的回答')) {
+        setCollectHint('这道题还没有回答内容，请先输入答案后再收藏（无需先提交）');
+      } else {
+        setError(msg);
+      }
+      console.error(err);
+    } finally {
+      const elapsed = Date.now() - collectStart;
+      if (elapsed < 700) {
+        await new Promise(resolve => setTimeout(resolve, 700 - elapsed));
+      }
+      setCollectingQuestion(false);
+    }
+  };
+
   const handleCompleteEarly = async () => {
     if (!session) return;
 
+    clearAutoSaveTimer();
     setIsSubmitting(true);
+    setError('');
     try {
       await interviewApi.completeInterview(session.sessionId);
       setShowCompleteConfirm(false);
-      // 面试已完成，评估将在后台进行，跳转到面试记录页
       onInterviewComplete();
     } catch (err) {
       setError('提前交卷失败，请重试');
@@ -216,98 +516,57 @@ export default function Interview({ resumeText, resumeId, onBack, onInterviewCom
     }
   };
 
-    // 配置界面
-  const renderConfig = () => {
-    return (
-      <InterviewConfigPanel
-        questionCount={questionCount}
-        onQuestionCountChange={setQuestionCount}
-        onStart={startInterview}
-        isCreating={isCreating}
-        checkingUnfinished={checkingUnfinished}
-        unfinishedSession={unfinishedSession}
-        onContinueUnfinished={handleContinueUnfinished}
-        onStartNew={handleStartNew}
-        resumeText={resumeText}
+  return (
+    <div className="relative flex h-screen min-h-0 w-full flex-col overflow-hidden bg-[#07111f] text-white md:flex-row">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.14),transparent_38%),linear-gradient(180deg,#08111f_0%,#050b16_100%)]" />
+      <div className="pointer-events-none absolute left-[-120px] top-20 h-[320px] w-[320px] rounded-full bg-[radial-gradient(circle,rgba(56,189,248,0.16)_0%,transparent_72%)] blur-3xl" />
+      <div className="pointer-events-none absolute right-[-120px] bottom-12 h-[320px] w-[320px] rounded-full bg-[radial-gradient(circle,rgba(244,114,182,0.12)_0%,transparent_72%)] blur-3xl" />
+      <Sidebar
+        stage={stage}
         onBack={onBack}
-        error={error}
-      />
-    );
-  };
-
-    // 面试对话界面
-  const renderInterview = () => {
-    if (!session || !currentQuestion) return null;
-
-    return (
-      <InterviewChatPanel
         session={session}
         currentQuestion={currentQuestion}
-        messages={messages}
-        answer={answer}
-        onAnswerChange={setAnswer}
-        onSubmit={handleSubmitAnswer}
-        onCompleteEarly={handleCompleteEarly}
-        isSubmitting={isSubmitting}
-        showCompleteConfirm={showCompleteConfirm}
-        onShowCompleteConfirm={setShowCompleteConfirm}
+        onSelectQuestion={handleSelectQuestion}
       />
-    );
-  };
 
-  const stageSubtitles = {
-    config: '配置您的面试参数',
-    interview: '认真回答每个问题，展示您的实力'
-  };
-
-    return (
-    <div className="pb-10">
-      {/* 页面头部 */}
-        <motion.div
-        className="text-center mb-10"
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-      >
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2 flex items-center justify-center gap-3">
-          <div className="w-12 h-12 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl flex items-center justify-center">
-            <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none">
-              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M19 10v2a7 7 0 0 1-14 0v-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              <line x1="12" y1="19" x2="12" y2="23" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              <line x1="8" y1="23" x2="16" y2="23" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
+      <section className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+        {stage === 'config' ? (
+          <div className="scrollbar-ds min-h-0 flex-1 overflow-y-auto">
+            <InterviewConfigPanel
+              questionCount={questionCount}
+              onQuestionCountChange={setQuestionCount}
+              onStart={startInterview}
+              isCreating={isCreating}
+              checkingUnfinished={checkingUnfinished}
+              unfinishedSession={unfinishedSession}
+              onContinueUnfinished={handleContinueUnfinished}
+              onStartNew={handleStartNew}
+              resumeText={resumeText}
+              onBack={onBack}
+              error={error}
+            />
           </div>
-          模拟面试
-        </h1>
-            <p className="text-slate-500 dark:text-slate-400">{stageSubtitles[stage]}</p>
-      </motion.div>
+        ) : session && currentQuestion ? (
+          <ChatArea
+            session={session}
+            currentQuestion={currentQuestion}
+            messages={messages}
+            answer={answer}
+            onAnswerChange={setAnswer}
+            onSubmit={handleSubmitAnswer}
+            isSubmitting={isSubmitting}
+            submitted={submittedQuestionIndexes.has(currentQuestion.questionIndex)}
+            saveStatus={saveStatus}
+            lastSavedAt={lastSavedAt}
+            onShowCompleteConfirm={setShowCompleteConfirm}
+            onCollectQuestion={handleCollectQuestion}
+            collectingQuestion={collectingQuestion}
+            collectHint={collectHint}
+            error={error}
+          />
+        ) : null}
+      </section>
 
-        <AnimatePresence mode="wait" initial={false}>
-        {stage === 'config' && (
-          <motion.div
-            key="config"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.3 }}
-          >
-            {renderConfig()}
-          </motion.div>
-        )}
-        {stage === 'interview' && (
-          <motion.div
-            key="interview"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            {renderInterview()}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-        {/* 提前交卷确认对话框 */}
       <ConfirmDialog
         open={showCompleteConfirm}
         title="提前交卷"

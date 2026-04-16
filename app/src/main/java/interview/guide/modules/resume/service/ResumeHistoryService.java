@@ -2,6 +2,7 @@ package interview.guide.modules.resume.service;
 
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
+import interview.guide.infrastructure.security.SecurityUtils;
 import interview.guide.infrastructure.export.PdfExportService;
 import interview.guide.infrastructure.mapper.InterviewMapper;
 import interview.guide.infrastructure.mapper.ResumeMapper;
@@ -41,7 +42,8 @@ public class ResumeHistoryService {
      * 获取所有简历列表
      */
     public List<ResumeListItemDTO> getAllResumes() {
-        List<ResumeEntity> resumes = resumePersistenceService.findAllResumes();
+        long userId = SecurityUtils.requireUserId();
+        List<ResumeEntity> resumes = resumePersistenceService.findAllResumesForUser(userId);
 
         return resumes.stream().map(resume -> {
             // 获取最新分析结果的分数
@@ -58,12 +60,8 @@ public class ResumeHistoryService {
             int interviewCount = interviewPersistenceService.findByResumeId(resume.getId()).size();
 
             // 使用 MapStruct 映射
-            return new ResumeListItemDTO(
-                resume.getId(),
-                resume.getOriginalFilename(),
-                resume.getFileSize(),
-                resume.getUploadedAt(),
-                resume.getAccessCount(),
+            return resumeMapper.toListItemDTO(
+                resume,
                 latestScore,
                 lastAnalyzedAt,
                 interviewCount
@@ -75,12 +73,8 @@ public class ResumeHistoryService {
      * 获取简历详情（包含分析历史）
      */
     public ResumeDetailDTO getResumeDetail(Long id) {
-        Optional<ResumeEntity> resumeOpt = resumePersistenceService.findById(id);
-        if (resumeOpt.isEmpty()) {
-            throw new BusinessException(ErrorCode.RESUME_NOT_FOUND);
-        }
-
-        ResumeEntity resume = resumeOpt.get();
+        long userId = SecurityUtils.requireUserId();
+        ResumeEntity resume = resumePersistenceService.requireResumeOwned(id, userId);
 
         // 获取所有分析记录，使用 MapStruct 批量转换
         List<ResumeAnalysisEntity> analyses = resumePersistenceService.findAnalysesByResumeId(id);
@@ -151,12 +145,8 @@ public class ResumeHistoryService {
      * 导出简历分析报告为PDF
      */
     public ExportResult exportAnalysisPdf(Long resumeId) {
-        Optional<ResumeEntity> resumeOpt = resumePersistenceService.findById(resumeId);
-        if (resumeOpt.isEmpty()) {
-            throw new BusinessException(ErrorCode.RESUME_NOT_FOUND);
-        }
-
-        ResumeEntity resume = resumeOpt.get();
+        long userId = SecurityUtils.requireUserId();
+        ResumeEntity resume = resumePersistenceService.requireResumeOwned(resumeId, userId);
         Optional<ResumeAnalysisResponse> analysisOpt = resumePersistenceService.getLatestAnalysisAsDTO(resumeId);
         if (analysisOpt.isEmpty()) {
             throw new BusinessException(ErrorCode.RESUME_ANALYSIS_NOT_FOUND);

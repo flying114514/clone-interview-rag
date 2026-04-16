@@ -45,6 +45,7 @@ public class AnswerEvaluationService {
     private final BeanOutputConverter<FinalSummaryDTO> summaryOutputConverter;
     private final StructuredOutputInvoker structuredOutputInvoker;
     private final int evaluationBatchSize;
+    private final boolean evaluationSummaryEnabled;
     
     // 中间DTO用于接收AI响应
     private record EvaluationReportDTO(
@@ -82,7 +83,8 @@ public class AnswerEvaluationService {
             @Value("classpath:prompts/interview-evaluation-user.st") Resource userPromptResource,
             @Value("classpath:prompts/interview-evaluation-summary-system.st") Resource summarySystemPromptResource,
             @Value("classpath:prompts/interview-evaluation-summary-user.st") Resource summaryUserPromptResource,
-            @Value("${app.interview.evaluation.batch-size:8}") int evaluationBatchSize) throws IOException {
+            @Value("${app.interview.evaluation.batch-size:8}") int evaluationBatchSize,
+            @Value("${app.interview.evaluation.summary-enabled:false}") boolean evaluationSummaryEnabled) throws IOException {
         this.chatClient = chatClientBuilder.build();
         this.structuredOutputInvoker = structuredOutputInvoker;
         this.systemPromptTemplate = new PromptTemplate(systemPromptResource.getContentAsString(StandardCharsets.UTF_8));
@@ -92,6 +94,7 @@ public class AnswerEvaluationService {
         this.summaryUserPromptTemplate = new PromptTemplate(summaryUserPromptResource.getContentAsString(StandardCharsets.UTF_8));
         this.summaryOutputConverter = new BeanOutputConverter<>(FinalSummaryDTO.class);
         this.evaluationBatchSize = Math.max(1, evaluationBatchSize);
+        this.evaluationSummaryEnabled = evaluationSummaryEnabled;
     }
     
     /**
@@ -100,11 +103,11 @@ public class AnswerEvaluationService {
     public InterviewReportDTO evaluateInterview(String sessionId, String resumeText,
                                                  List<InterviewQuestionDTO> questions) {
         log.info("开始评估面试: {}, 共{}题", sessionId, questions.size());
-        
+
         try {
             // 简历摘要（限制长度）
-            String resumeSummary = resumeText.length() > 500 
-                ? resumeText.substring(0, 500) + "..." 
+            String resumeSummary = resumeText.length() > 500
+                ? resumeText.substring(0, 500) + "..."
                 : resumeText;
 
             // 分批评估，避免单次上下文过大导致 token 超限
@@ -114,15 +117,25 @@ public class AnswerEvaluationService {
             String fallbackOverallFeedback = mergeOverallFeedback(batchResults);
             List<String> fallbackStrengths = mergeListItems(batchResults, true);
             List<String> fallbackImprovements = mergeListItems(batchResults, false);
-            FinalSummaryDTO finalSummary = summarizeBatchResults(
-                sessionId,
-                resumeSummary,
-                questions,
-                mergedEvaluations,
-                fallbackOverallFeedback,
-                fallbackStrengths,
-                fallbackImprovements
-            );
+
+            FinalSummaryDTO finalSummary;
+            if (evaluationSummaryEnabled) {
+                finalSummary = summarizeBatchResults(
+                    sessionId,
+                    resumeSummary,
+                    questions,
+                    mergedEvaluations,
+                    fallbackOverallFeedback,
+                    fallbackStrengths,
+                    fallbackImprovements
+                );
+            } else {
+                finalSummary = new FinalSummaryDTO(
+                    fallbackOverallFeedback,
+                    fallbackStrengths,
+                    fallbackImprovements
+                );
+            }
 
             // 转换为业务对象
             return convertToReport(
@@ -133,17 +146,50 @@ public class AnswerEvaluationService {
                 finalSummary.strengths(),
                 finalSummary.improvements()
             );
-            
+
         } catch (BusinessException e) {
             // 重新抛出业务异常
             throw e;
         } catch (Exception e) {
             log.error("面试评估失败: {}", e.getMessage(), e);
-            throw new BusinessException(ErrorCode.INTERVIEW_EVALUATION_FAILED, 
+            throw new BusinessException(ErrorCode.INTERVIEW_EVALUATION_FAILED,
                 "面试评估失败：" + e.getMessage());
         }
     }
-    
+
+
+    /**
+     * 生成单题参考答案（用于收藏时即时补全）
+     */
+    public ReferenceAnswer generateReferenceAnswer(String sessionId, String resumeText, InterviewQuestionDTO question) {
+        String resumeSummary = resumeText != null && resumeText.length() > 500
+            ? resumeText.substring(0, 500) + "..."
+            : (resumeText == null ? "" : resumeText);
+
+        EvaluationReportDTO report = evaluateBatch(
+            sessionId,
+            resumeSummary,
+            List.of(question),
+            question.questionIndex(),
+            question.questionIndex() + 1
+        );
+
+        QuestionEvaluationDTO eval = (report != null && report.questionEvaluations() != null && !report.questionEvaluations().isEmpty())
+            ? report.questionEvaluations().get(0)
+            : null;
+
+        if (eval == null) {
+            return new ReferenceAnswer(question.questionIndex(), question.question(), "", List.of());
+        }
+
+        return new ReferenceAnswer(
+            question.questionIndex(),
+            question.question(),
+            eval.referenceAnswer() != null ? eval.referenceAnswer() : "",
+            eval.keyPoints() != null ? eval.keyPoints() : List.of()
+        );
+    }
+
     /**
      * 构建问答记录字符串
      */

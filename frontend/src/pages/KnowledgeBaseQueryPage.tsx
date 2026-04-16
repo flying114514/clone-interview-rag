@@ -8,7 +8,7 @@ import {ragChatApi, type RagChatSessionListItem} from '../api/ragChat';
 import {formatDateOnly} from '../utils/date';
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
 import CodeBlock from '../components/CodeBlock';
-import {ChevronLeft, ChevronRight, Edit, MessageSquare, Pin, Plus, Trash2,} from 'lucide-react';
+import {ChevronLeft, ChevronRight, Edit, MessageSquare, Pin, Plus, Trash2, Bot, UserCircle2,} from 'lucide-react';
 
 interface KnowledgeBaseQueryPageProps {
   onBack: () => void;
@@ -47,6 +47,7 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
   const [currentSessionId, setCurrentSessionId] = useState<number | null>(null);
   const [currentSessionTitle, setCurrentSessionTitle] = useState<string>('');
   const [loadingSessions, setLoadingSessions] = useState(false);
+  const [loadingSessionDetail, setLoadingSessionDetail] = useState(false);
   const [sessionDeleteConfirm, setSessionDeleteConfirm] = useState<{ id: number; title: string } | null>(null);
   const [editingSessionTitle, setEditingSessionTitle] = useState<{ id: number; title: string } | null>(null);
   const [newSessionTitle, setNewSessionTitle] = useState('');
@@ -179,19 +180,34 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
   };
 
   const handleLoadSession = async (sessionId: number) => {
+    setLoadingSessionDetail(true);
     try {
       const detail = await ragChatApi.getSessionDetail(sessionId);
-      setCurrentSessionId(detail.id);
-      setCurrentSessionTitle(detail.title);
-      setSelectedKbIds(new Set(detail.knowledgeBases.map(kb => kb.id)));
-      setMessages(detail.messages.map(m => ({
+      const restoredMessages = detail.messages.map(m => ({
         id: m.id,
         type: m.type,
         content: m.content,
         timestamp: new Date(m.createdAt),
-      })));
+      }));
+
+      setCurrentSessionId(detail.id);
+      setCurrentSessionTitle(detail.title);
+      setSelectedKbIds(new Set(detail.knowledgeBases.map(kb => kb.id)));
+      setMessages(restoredMessages);
+
+      if (restoredMessages.length > 0) {
+        requestAnimationFrame(() => {
+          virtuosoRef.current?.scrollToIndex({
+            index: restoredMessages.length - 1,
+            align: 'end',
+            behavior: 'auto',
+          });
+        });
+      }
     } catch (err) {
       console.error('加载会话失败', err);
+    } finally {
+      setLoadingSessionDetail(false);
     }
   };
 
@@ -343,7 +359,18 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
   };
 
   const formatTimeAgo = (dateStr: string): string => {
-    const date = new Date(dateStr);
+    const normalized = dateStr.includes('T') ? dateStr : dateStr.replace(' ', 'T');
+    const hasTimezone = /[zZ]|[+-]\d{2}:\d{2}$/.test(normalized);
+
+    const date = hasTimezone
+      ? new Date(normalized)
+      : (() => {
+          const [datePart, timePart = '00:00:00'] = normalized.split('T');
+          const [y, m, d] = datePart.split('-').map(Number);
+          const [hh, mm, ss = 0] = timePart.split(':').map(Number);
+          return new Date(y, (m || 1) - 1, d || 1, hh || 0, mm || 0, ss || 0);
+        })();
+
     const now = new Date();
     const diff = now.getTime() - date.getTime();
     const minutes = Math.floor(diff / 60000);
@@ -354,29 +381,31 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
     if (minutes < 60) return `${minutes} 分钟前`;
     if (hours < 24) return `${hours} 小时前`;
     if (days < 7) return `${days} 天前`;
-    return formatDateOnly(dateStr);
+    return formatDateOnly(hasTimezone ? normalized : `${normalized}+08:00`);
   };
 
   return (
-    <div className="max-w-7xl mx-auto pt-8 pb-10 px-4">
-      {/* 头部 */}
-      <div className="flex items-center justify-between mb-6">
+    <div className="relative mx-auto max-w-[1320px] pb-8">
+      <div className="pointer-events-none absolute left-1/2 top-[-180px] h-[380px] w-[720px] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(56,189,248,0.25)_0%,rgba(99,102,241,0.14)_42%,transparent_72%)] blur-2xl" />
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-1">问答助手</h1>
-          <p className="text-slate-500 dark:text-slate-400 text-sm">选择知识库，向 AI 提问</p>
+          <h1 className="mb-1 text-[clamp(2rem,4vw,3rem)] leading-[0.96] tracking-[-0.04em] text-white [font-family:'Playfair_Display','Times_New_Roman',serif]">问答助手</h1>
+          <p className="text-sm text-white/68">选择知识库，向 AI 提问</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-2">
           <motion.button
+            type="button"
             onClick={onUpload}
-            className="px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-all text-sm"
+            className="rounded-full border border-white/16 bg-white/[0.05] px-4 py-2 text-sm font-semibold text-white/88 transition-all hover:bg-white/[0.10]"
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
           >
             上传知识库
           </motion.button>
           <motion.button
+            type="button"
             onClick={onBack}
-            className="px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-all text-sm"
+            className="rounded-full border border-white/16 bg-white/[0.05] px-4 py-2 text-sm font-semibold text-white/88 transition-all hover:bg-white/[0.10]"
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
           >
@@ -385,91 +414,90 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
         </div>
       </div>
 
-      <div className="flex gap-4 h-[calc(100vh-10rem)]">
+      <div className="flex h-[calc(100vh-10rem)] gap-3">
         {/* 左侧：对话历史 */}
-        <div className="w-64 flex-shrink-0">
-          <div
-              className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-sm h-full flex flex-col border border-slate-100 dark:border-slate-700">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-semibold text-slate-800 dark:text-white">对话历史</h2>
+        <div className="w-64 shrink-0">
+          <div className="flex h-full flex-col rounded-[22px] border border-white/12 bg-white/[0.05] p-4 shadow-[0_18px_60px_rgba(2,6,23,0.52)] backdrop-blur-[20px]">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-sm font-bold text-white dark:text-neutral-100">对话历史</h2>
               <motion.button
+                type="button"
                 onClick={handleNewSession}
                 disabled={selectedKbIds.size === 0}
-                className="p-1.5 text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
+                className="rounded-pill p-1.5 text-ds-accent transition-colors hover:bg-ds-bg-subtle disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-neutral-900"
+                whileHover={{scale: 1.05}}
+                whileTap={{scale: 0.95}}
                 title="新建对话"
               >
-                <Plus className="w-5 h-5" />
+                <Plus className="h-5 w-5" strokeWidth={2} />
               </motion.button>
             </div>
 
-            <div className="flex-1 overflow-y-auto">
+            <div className="scrollbar-ds flex-1 overflow-y-auto">
               {loadingSessions ? (
-                <div className="text-center py-6">
+                <div className="py-6 text-center">
                   <motion.div
-                    className="w-5 h-5 border-2 border-primary-500 border-t-transparent rounded-full mx-auto"
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                    className="mx-auto h-5 w-5 rounded-full border-2 border-white/12 border-t-ds-fg dark:border-neutral-800 dark:border-t-neutral-100"
+                    animate={{rotate: 360}}
+                    transition={{duration: 1, repeat: Infinity, ease: 'linear'}}
                   />
                 </div>
               ) : sessions.length === 0 ? (
-                  <div className="text-center py-6 text-slate-400 dark:text-slate-500 text-sm">
-                  暂无对话历史
-                </div>
+                <div className="py-6 text-center text-sm text-white-muted dark:text-neutral-500">暂无对话历史</div>
               ) : (
                 <div className="space-y-2">
-                  {sessions.map((session) => (
+                  {sessions.map(session => (
                     <div
                       key={session.id}
                       onClick={() => handleLoadSession(session.id)}
-                      className={`p-3 rounded-lg cursor-pointer transition-all group ${currentSessionId === session.id
-                          ? 'bg-primary-50 dark:bg-primary-900/30 border border-primary-500'
-                          : 'bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700 border border-transparent'
-                        } ${session.isPinned ? 'border-l-4 border-l-primary-500' : ''}`}
+                      className={`group cursor-pointer rounded-xl border p-3 transition-all ${
+                        currentSessionId === session.id
+                          ? 'border-ds-fg bg-ds-bg-subtle dark:border-neutral-100 dark:bg-neutral-900'
+                          : 'border-transparent bg-ds-bg-subtle hover:bg-ds-bg dark:bg-neutral-900/50 dark:hover:bg-neutral-900'
+                      } ${session.isPinned ? 'border-l-4 border-l-ds-accent' : ''}`}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
+                        <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
-                            {session.isPinned && (
-                              <Pin className="w-3.5 h-3.5 text-primary-500 fill-primary-500 flex-shrink-0" />
-                            )}
-                            <p className="font-medium text-slate-800 dark:text-white text-sm truncate">{session.title}</p>
+                            {session.isPinned && <Pin className="h-3.5 w-3.5 shrink-0 fill-ds-accent text-ds-accent" />}
+                            <p className="truncate text-sm font-semibold text-white dark:text-neutral-100">{session.title}</p>
                           </div>
-                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                            {session.messageCount} 条消息 · {formatTimeAgo(session.updatedAt)}
+                          <p className="mt-1 text-xs text-white-muted dark:text-neutral-500">
+                            {session.messageCount} 条消息 · {formatTimeAgo(session.createdAt || session.updatedAt)}
                           </p>
                         </div>
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                        <div className="flex items-center gap-1 opacity-0 transition-all group-hover:opacity-100">
                           <button
-                            onClick={(e) => handleTogglePin(session.id, e)}
-                            className={`p-1 rounded transition-colors ${session.isPinned
-                              ? 'text-primary-500 hover:text-primary-600'
-                              : 'text-slate-400 hover:text-primary-500'
-                              }`}
+                            type="button"
+                            onClick={e => handleTogglePin(session.id, e)}
+                            className={`rounded p-1 transition-colors ${
+                              session.isPinned ? 'text-ds-accent hover:opacity-80' : 'text-white-muted hover:text-ds-accent'
+                            }`}
                             title={session.isPinned ? '取消置顶' : '置顶'}
                           >
-                            <Pin className={`w-4 h-4 ${session.isPinned ? 'fill-primary-500' : ''}`} />
+                            <Pin className={`h-4 w-4 ${session.isPinned ? 'fill-ds-accent' : ''}`} />
                           </button>
                           <button
-                            onClick={(e) => {
+                            type="button"
+                            onClick={e => {
                               e.stopPropagation();
                               handleEditSessionTitle(session.id, session.title);
                             }}
-                            className="p-1 text-slate-400 hover:text-primary-500 rounded transition-colors"
+                            className="rounded p-1 text-white-muted transition-colors hover:text-white dark:hover:text-neutral-200"
                             title="编辑标题"
                           >
-                            <Edit className="w-4 h-4" />
+                            <Edit className="h-4 w-4" />
                           </button>
                           <button
-                            onClick={(e) => {
+                            type="button"
+                            onClick={e => {
                               e.stopPropagation();
-                              setSessionDeleteConfirm({ id: session.id, title: session.title });
+                              setSessionDeleteConfirm({id: session.id, title: session.title});
                             }}
-                            className="p-1 text-slate-400 hover:text-red-500 rounded transition-colors"
+                            className="rounded p-1 text-white-muted transition-colors hover:text-red-600 dark:hover:text-red-400"
                             title="删除"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="h-4 w-4" />
                           </button>
                         </div>
                       </div>
@@ -482,24 +510,25 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
         </div>
 
         {/* 中间：聊天区域 */}
-        <div className="flex-1 min-w-0">
-          <div
-              className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm flex flex-col h-full border border-slate-100 dark:border-slate-700">
+        <div className="min-w-0 flex-1">
+          <div className="flex h-full flex-col rounded-card border border-white/18 bg-white/[0.16] shadow-[0_18px_60px_rgba(30,64,175,0.2)] backdrop-blur-[16px]">
             {selectedKbIds.size > 0 ? (
               <>
-                {/* 会话信息 */}
-                <div className="p-4 border-b border-slate-200 dark:border-slate-600">
-                  <h2 className="text-base font-semibold text-slate-800 dark:text-white">
-                    {currentSessionTitle || (selectedKbIds.size === 1
-                      ? knowledgeBases.find(kb => kb.id === Array.from(selectedKbIds)[0])?.name || '新对话'
-                      : `${selectedKbIds.size} 个知识库 - 新对话`)}
+                <div className="border-b border-white/12 p-4 dark:border-neutral-800">
+                  <h2 className="text-sm font-bold text-white dark:text-neutral-100">
+                    {currentSessionTitle ||
+                      (selectedKbIds.size === 1
+                        ? knowledgeBases.find(kb => kb.id === Array.from(selectedKbIds)[0])?.name || '新对话'
+                        : `${selectedKbIds.size} 个知识库 - 新对话`)}
                   </h2>
-                  <div className="flex flex-wrap gap-1.5 mt-2">
+                  <div className="mt-2 flex flex-wrap gap-1.5">
                     {Array.from(selectedKbIds).map(kbId => {
                       const kb = knowledgeBases.find(k => k.id === kbId);
                       return kb ? (
-                          <span key={kbId}
-                                className="px-2 py-0.5 bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 text-xs rounded-full">
+                        <span
+                          key={kbId}
+                          className="rounded-full border border-white/14 bg-white/[0.04] px-2 py-0.5 text-xs font-semibold text-white/70"
+                        >
                           {kb.name}
                         </span>
                       ) : null;
@@ -507,74 +536,105 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
                   </div>
                 </div>
 
-                {/* 消息列表 */}
-                <div className="flex-1 min-h-0 relative dark:bg-slate-800">
-                  {messages.length === 0 ? (
-                      <div
-                          className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500">
-                      <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                <div className="relative min-h-0 flex-1">
+                  {loadingSessionDetail ? (
+                    <div className="absolute inset-0 px-4 py-4">
+                      <div className="space-y-4">
+                        <div className="flex items-start gap-3">
+                          <div className="h-9 w-9 shrink-0 animate-pulse rounded-full bg-white/15" />
+                          <div className="w-[72%] animate-pulse rounded-[18px] border border-white/10 bg-white/[0.08] p-4">
+                            <div className="mb-2 h-3 w-5/6 rounded bg-white/12" />
+                            <div className="h-3 w-2/3 rounded bg-white/12" />
+                          </div>
+                        </div>
+                        <div className="flex items-start justify-end gap-3">
+                          <div className="w-[62%] animate-pulse rounded-[18px] border border-white/10 bg-white/[0.10] p-4">
+                            <div className="mb-2 h-3 w-4/5 rounded bg-white/14" />
+                            <div className="h-3 w-3/5 rounded bg-white/14" />
+                          </div>
+                          <div className="h-9 w-9 shrink-0 animate-pulse rounded-full bg-white/15" />
+                        </div>
+                        <div className="flex items-start gap-3">
+                          <div className="h-9 w-9 shrink-0 animate-pulse rounded-full bg-white/15" />
+                          <div className="w-[78%] animate-pulse rounded-[18px] border border-white/10 bg-white/[0.08] p-4">
+                            <div className="mb-2 h-3 w-11/12 rounded bg-white/12" />
+                            <div className="mb-2 h-3 w-4/5 rounded bg-white/12" />
+                            <div className="h-3 w-2/3 rounded bg-white/12" />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : messages.length === 0 ? (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-white-muted dark:text-neutral-500">
+                      <MessageSquare className="mx-auto mb-3 h-12 w-12 opacity-40" strokeWidth={1.25} />
                       <p className="text-sm">开始提问吧！</p>
                     </div>
                   ) : (
                     <Virtuoso
+                      key={currentSessionId ?? 'new-session'}
                       ref={virtuosoRef}
                       data={messages}
-                      initialTopMostItemIndex={messages.length - 1}
+                      initialTopMostItemIndex={messages.length > 0 ? messages.length - 1 : 0}
                       followOutput="smooth"
                       className="h-full w-full"
                       itemContent={(index, msg) => (
-                          <div className="pb-4 px-4 first:pt-4 dark:bg-slate-800">
+                        <div className="px-4 pb-4 first:pt-4">
                           <motion.div
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}
+                            initial={{opacity: 0, y: 10}}
+                            animate={{opacity: 1, y: 0}}
+                            className={`flex gap-3 ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}
                           >
+                            {msg.type === 'assistant' ? (
+                              <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-cyan-200/35 bg-cyan-300/15 text-cyan-100">
+                                <Bot className="h-5 w-5" strokeWidth={2} />
+                              </div>
+                            ) : null}
+
                             <div
-                              className={`max-w-[85%] rounded-2xl p-4 shadow-sm ${msg.type === 'user'
-                                ? 'bg-primary-600 text-white'
-                                  : 'bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-600 text-slate-800 dark:text-slate-100'
+                              className={`max-w-[85%] rounded-[18px] p-4 text-sm shadow-[0_10px_26px_rgba(2,6,23,0.28)] ${
+                                msg.type === 'user'
+                                  ? 'border border-indigo-300/40 bg-[linear-gradient(135deg,#2563eb_0%,#4f46e5_45%,#7c3aed_100%)] text-white'
+                                  : 'border border-slate-300/20 bg-[linear-gradient(160deg,rgba(10,25,47,0.92)_0%,rgba(15,23,42,0.92)_100%)] text-slate-100'
                               }`}
                             >
                               {msg.type === 'user' ? (
-                                <p className="whitespace-pre-wrap leading-relaxed text-sm">{msg.content}</p>
+                                <p className="whitespace-pre-wrap leading-relaxed text-white/95">{msg.content}</p>
                               ) : (
-                                  <div className="prose prose-slate dark:prose-invert prose-sm max-w-none">
+                                <div className="prose prose-sm max-w-none prose-p:my-2 prose-headings:mb-2 prose-headings:text-slate-100 prose-p:text-slate-100 prose-strong:text-cyan-200 prose-li:text-slate-100 prose-code:text-cyan-100 prose-pre:my-2 prose-pre:bg-transparent prose-a:text-cyan-200">
                                   <ReactMarkdown
                                     remarkPlugins={[remarkGfm]}
                                     components={{
-                                      // 自定义代码块渲染
-                                      code: ({ className, children }) => {
+                                      code: ({className, children}) => {
                                         const match = /language-(\w+)/.exec(className || '');
                                         const isInline = !match;
 
                                         if (isInline) {
                                           return (
-                                              <code
-                                                  className="bg-slate-100 dark:bg-slate-600 text-primary-600 dark:text-primary-400 px-1.5 py-0.5 rounded-md text-sm font-normal">
+                                            <code className="rounded-md border border-cyan-200/20 bg-slate-900/70 px-1.5 py-0.5 text-sm font-normal text-cyan-100">
                                               {children}
                                             </code>
                                           );
                                         }
 
-                                        // 代码块使用 CodeBlock 组件
-                                        return (
-                                          <CodeBlock language={match[1]}>
-                                            {String(children).replace(/\n$/, '')}
-                                          </CodeBlock>
-                                        );
+                                        return <CodeBlock language={match[1]}>{String(children).replace(/\n$/, '')}</CodeBlock>;
                                       },
-                                      // 禁用默认 pre 渲染，由 CodeBlock 处理
-                                      pre: ({ children }) => <>{children}</>,
+                                      pre: ({children}) => <>{children}</>
                                     }}
                                   >
                                     {formatMarkdown(msg.content)}
                                   </ReactMarkdown>
                                   {loading && index === messages.length - 1 && (
-                                    <span className="inline-block w-0.5 h-5 bg-primary-500 ml-1 animate-pulse" />
+                                    <span className="ml-1 inline-block h-5 w-0.5 animate-pulse bg-cyan-200" />
                                   )}
                                 </div>
                               )}
                             </div>
+
+                            {msg.type === 'user' ? (
+                              <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-indigo-200/45 bg-indigo-300/20 text-indigo-50">
+                                <UserCircle2 className="h-5 w-5" strokeWidth={2} />
+                              </div>
+                            ) : null}
                           </motion.div>
                         </div>
                       )}
@@ -582,24 +642,24 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
                   )}
                 </div>
 
-                {/* 输入区域 */}
-                <div className="p-4 border-t border-slate-200 dark:border-slate-600">
-                  <div className="flex gap-3">
+                <div className="border-t border-white/12 p-4 dark:border-neutral-800">
+                  <div className="flex items-center gap-2 rounded-pill border border-white/12-strong bg-ds-bg-composer p-2 pl-3 dark:border-neutral-800 dark:bg-neutral-900">
                     <input
                       type="text"
                       value={question}
-                      onChange={(e) => setQuestion(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSubmitQuestion()}
-                      placeholder="输入您的问题..."
-                      className="flex-1 px-4 py-2.5 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
+                      onChange={e => setQuestion(e.target.value)}
+                      onKeyPress={e => e.key === 'Enter' && !e.shiftKey && handleSubmitQuestion()}
+                      placeholder="输入您的问题…"
+                      className="min-w-0 flex-1 border-0 bg-transparent text-sm text-white placeholder:text-white/45 focus:outline-none"
                       disabled={loading}
                     />
                     <motion.button
+                      type="button"
                       onClick={handleSubmitQuestion}
                       disabled={!question.trim() || selectedKbIds.size === 0 || loading}
-                      className="px-5 py-2.5 bg-primary-500 text-white rounded-xl font-medium hover:bg-primary-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-                      whileHover={{ scale: loading ? 1 : 1.02 }}
-                      whileTap={{ scale: loading ? 1 : 0.98 }}
+                      className="shrink-0 rounded-full bg-[linear-gradient(90deg,#38bdf8,#4f46e5)] px-5 py-2 text-sm font-semibold text-white transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                      whileHover={{scale: loading ? 1 : 1.02}}
+                      whileTap={{scale: loading ? 1 : 0.98}}
                     >
                       发送
                     </motion.button>
@@ -607,7 +667,7 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
                 </div>
               </>
             ) : (
-                <div className="flex-1 flex items-center justify-center text-slate-400 dark:text-slate-500">
+                <div className="flex flex-1 items-center justify-center text-white-muted dark:text-neutral-500">
                 <div className="text-center">
                   <svg className="w-12 h-12 mx-auto mb-3 opacity-50" viewBox="0 0 24 24" fill="none">
                     <path d="M21 15C21 15.5304 20.7893 16.0391 20.4142 16.4142C20.0391 16.7893 19.5304 17 19 17H7L3 21V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H19C19.5304 3 20.0391 3.21071 20.4142 3.58579C20.7893 3.96086 21 4.46957 21 5V15Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -629,45 +689,44 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
               transition={{ duration: 0.2 }}
               className="flex-shrink-0 overflow-hidden"
             >
-              <div
-                  className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-sm h-full flex flex-col w-[280px] border border-slate-100 dark:border-slate-700">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-base font-semibold text-slate-800 dark:text-white">选择知识库</h2>
+              <div className="flex h-full w-[280px] flex-col rounded-[22px] border border-white/12 bg-white/[0.05] p-4 shadow-[0_18px_60px_rgba(2,6,23,0.52)] backdrop-blur-[20px]">
+                <div className="mb-4 flex items-center justify-between">
+                  <h2 className="text-sm font-bold text-white dark:text-neutral-100">选择知识库</h2>
                   <button
+                    type="button"
                     onClick={() => setRightPanelOpen(false)}
-                    className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded"
+                    className="rounded-pill p-1 text-white-muted transition-colors hover:bg-ds-bg-subtle hover:text-white dark:hover:bg-neutral-900 dark:hover:text-neutral-200"
                   >
-                    <ChevronLeft className="w-5 h-5" />
+                    <ChevronLeft className="h-5 w-5" strokeWidth={1.75} />
                   </button>
                 </div>
 
-                {/* 搜索框 */}
-                <div className="flex gap-2 mb-3">
+                <div className="mb-3 flex gap-2">
                   <input
                     type="text"
                     value={searchKeyword}
-                    onChange={(e) => setSearchKeyword(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                    placeholder="搜索..."
-                    className="flex-1 px-3 py-1.5 text-sm border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
+                    onChange={e => setSearchKeyword(e.target.value)}
+                    onKeyPress={e => e.key === 'Enter' && handleSearch()}
+                    placeholder="搜索…"
+                    className="flex-1 rounded-full border border-white/16 bg-white/[0.05] px-3 py-1.5 text-sm text-white focus:border-cyan-300/45 focus:outline-none"
                   />
                   <button
+                    type="button"
                     onClick={handleSearch}
-                    className="px-3 py-1.5 text-sm bg-primary-500 text-white rounded-lg hover:bg-primary-600"
+                    className="rounded-pill bg-ds-fg px-3 py-1.5 text-sm font-black text-ds-bg hover:opacity-90 dark:bg-neutral-100 dark:text-neutral-950"
                   >
                     搜索
                   </button>
                 </div>
 
-                {/* 排序 */}
                 <div className="mb-3">
                   <select
                     value={sortBy}
-                    onChange={(e) => {
+                    onChange={e => {
                       setSortBy(e.target.value as SortOption);
                       setSearchKeyword('');
                     }}
-                    className="w-full px-2 py-1 text-xs border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300"
+                    className="w-full rounded-full border border-white/16 bg-white/[0.05] px-2 py-1.5 text-xs font-semibold text-white focus:border-cyan-300/45 focus:outline-none [&>option]:bg-[#0f1a2a] [&>option]:text-white"
                   >
                     <option value="time">时间排序</option>
                     <option value="size">大小排序</option>
@@ -677,74 +736,73 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
                 </div>
 
                 {/* 知识库列表 */}
-                <div className="flex-1 overflow-y-auto">
+                <div className="scrollbar-ds flex-1 overflow-y-auto">
                   {loadingList ? (
-                    <div className="text-center py-6">
+                    <div className="py-6 text-center">
                       <motion.div
-                        className="w-5 h-5 border-2 border-primary-500 border-t-transparent rounded-full mx-auto"
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                        className="mx-auto h-5 w-5 rounded-full border-2 border-white/12 border-t-ds-fg dark:border-neutral-800 dark:border-t-neutral-100"
+                        animate={{rotate: 360}}
+                        transition={{duration: 1, repeat: Infinity, ease: 'linear'}}
                       />
                     </div>
                   ) : knowledgeBases.length === 0 ? (
-                      <div className="text-center py-6 text-slate-500 dark:text-slate-400">
+                    <div className="py-6 text-center text-white-muted dark:text-neutral-400">
                       <p className="mb-2 text-sm">{searchKeyword ? '未找到' : '暂无知识库'}</p>
                       {!searchKeyword && (
-                        <button onClick={onUpload} className="text-primary-500 hover:text-primary-600 font-medium text-sm">
+                        <button type="button" onClick={onUpload} className="text-sm font-bold text-ds-accent hover:underline">
                           立即上传
                         </button>
                       )}
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      {groupedKnowledgeBases.map((group) => (
-                          <div key={group.name}
-                               className="border border-slate-100 dark:border-slate-700 rounded-lg overflow-hidden">
+                      {groupedKnowledgeBases.map(group => (
+                        <div key={group.name} className="overflow-hidden rounded-lg border border-white/12 dark:border-neutral-800">
                           <button
+                            type="button"
                             onClick={() => toggleCategory(group.name)}
-                            className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                            className="flex w-full items-center justify-between bg-ds-bg-subtle px-3 py-2 transition-colors hover:bg-ds-bg dark:bg-neutral-900/60 dark:hover:bg-neutral-900"
                           >
                             <div className="flex items-center gap-2">
                               <ChevronRight
-                                className={`w-3.5 h-3.5 text-slate-400 transition-transform ${group.isExpanded ? 'rotate-90' : ''}`}
+                                className={`h-3.5 w-3.5 text-white-muted transition-transform ${group.isExpanded ? 'rotate-90' : ''}`}
                               />
-                              <span
-                                  className="font-medium text-slate-700 dark:text-slate-300 text-sm">{group.name}</span>
+                              <span className="text-sm font-semibold text-white dark:text-neutral-200">{group.name}</span>
                             </div>
-                            <span className="text-xs text-slate-400">{group.items.length}</span>
+                            <span className="text-xs text-white-faint dark:text-neutral-500">{group.items.length}</span>
                           </button>
 
                           <AnimatePresence>
                             {group.isExpanded && (
                               <motion.div
-                                initial={{ height: 0, opacity: 0 }}
-                                animate={{ height: 'auto', opacity: 1 }}
-                                exit={{ height: 0, opacity: 0 }}
-                                transition={{ duration: 0.2 }}
+                                initial={{height: 0, opacity: 0}}
+                                animate={{height: 'auto', opacity: 1}}
+                                exit={{height: 0, opacity: 0}}
+                                transition={{duration: 0.2}}
                                 className="overflow-hidden"
                               >
-                                <div className="p-2 space-y-1">
-                                  {group.items.map((kb) => (
+                                <div className="space-y-1 p-2">
+                                  {group.items.map(kb => (
                                     <div
                                       key={kb.id}
                                       onClick={() => handleToggleKb(kb.id)}
-                                      className={`p-2 rounded-lg cursor-pointer transition-all ${selectedKbIds.has(kb.id)
-                                          ? 'bg-primary-50 dark:bg-primary-900/30 border border-primary-500'
-                                          : 'bg-white dark:bg-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-700 border border-transparent'
-                                        }`}
+                                      className={`cursor-pointer rounded-lg border p-2 transition-all ${
+                                        selectedKbIds.has(kb.id)
+                                          ? 'border-ds-fg bg-ds-bg-subtle dark:border-neutral-100 dark:bg-neutral-900'
+                                          : 'border-transparent bg-ds-bg hover:bg-ds-bg-subtle dark:bg-neutral-950 dark:hover:bg-neutral-900'
+                                      }`}
                                     >
                                       <div className="flex items-center gap-2">
                                         <input
                                           type="checkbox"
                                           checked={selectedKbIds.has(kb.id)}
                                           onChange={() => handleToggleKb(kb.id)}
-                                          onClick={(e) => e.stopPropagation()}
-                                          className="w-3.5 h-3.5 text-primary-500 rounded focus:ring-primary-500"
+                                          onClick={e => e.stopPropagation()}
+                                          className="h-3.5 w-3.5 rounded border-white/12 text-ds-accent focus:ring-ds-accent dark:border-neutral-700"
                                         />
-                                        <span
-                                            className="font-medium text-slate-800 dark:text-white text-xs truncate flex-1">{kb.name}</span>
+                                        <span className="min-w-0 flex-1 truncate text-xs font-semibold text-white dark:text-neutral-100">{kb.name}</span>
                                       </div>
-                                      <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5 ml-5">{formatFileSize(kb.fileSize)}</p>
+                                      <p className="ml-5 mt-0.5 text-xs text-white-faint dark:text-neutral-500">{formatFileSize(kb.fileSize)}</p>
                                     </div>
                                   ))}
                                 </div>
@@ -764,11 +822,12 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
         {/* 收起状态下的展开按钮 */}
         {!rightPanelOpen && (
           <button
+            type="button"
             onClick={() => setRightPanelOpen(true)}
-            className="flex-shrink-0 w-10 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 flex items-center justify-center hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+            className="flex h-full w-10 shrink-0 items-center justify-center rounded-[18px] border border-white/12 bg-white/[0.05] shadow-[0_12px_40px_rgba(2,6,23,0.4)] transition-colors hover:bg-white/[0.1]"
             title="展开知识库面板"
           >
-            <ChevronRight className="w-5 h-5 text-slate-400" />
+            <ChevronRight className="h-5 w-5 text-white-muted" strokeWidth={1.75} />
           </button>
         )}
       </div>
@@ -794,40 +853,42 @@ export default function KnowledgeBaseQueryPage({ onBack, onUpload }: KnowledgeBa
                 setEditingSessionTitle(null);
                 setNewSessionTitle('');
               }}
-              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50"
+              className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[2px]"
             />
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
               <motion.div
                 initial={{ opacity: 0, scale: 0.95, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                onClick={(e) => e.stopPropagation()}
-                className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full p-6 border border-slate-100 dark:border-slate-700"
+                onClick={e => e.stopPropagation()}
+                className="w-full max-w-md rounded-card border border-white/12 bg-ds-bg p-6 shadow-ds-sm dark:border-neutral-800 dark:bg-neutral-950"
               >
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-4">编辑标题</h3>
+                <h3 className="mb-4 text-xl font-black tracking-tight text-white dark:text-neutral-50">编辑标题</h3>
                 <input
                   type="text"
                   value={newSessionTitle}
-                  onChange={(e) => setNewSessionTitle(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSaveSessionTitle()}
+                  onChange={e => setNewSessionTitle(e.target.value)}
+                  onKeyPress={e => e.key === 'Enter' && handleSaveSessionTitle()}
                   placeholder="请输入新标题"
-                  className="w-full px-4 py-3 text-sm border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 mb-4 bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
+                  className="mb-4 w-full rounded-full border border-white/16 bg-white/[0.05] px-4 py-3 text-sm text-white focus:border-cyan-300/45 focus:outline-none"
                   autoFocus
                 />
                 <div className="flex justify-end gap-3">
                   <button
+                    type="button"
                     onClick={() => {
                       setEditingSessionTitle(null);
                       setNewSessionTitle('');
                     }}
-                    className="px-4 py-2 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white"
+                    className="rounded-pill px-4 py-2 text-sm font-bold text-white-muted hover:text-white dark:text-neutral-400 dark:hover:text-neutral-100"
                   >
                     取消
                   </button>
                   <button
+                    type="button"
                     onClick={handleSaveSessionTitle}
                     disabled={!newSessionTitle.trim()}
-                    className="px-4 py-2 text-sm bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50"
+                    className="rounded-pill bg-ds-fg px-4 py-2 text-sm font-black text-ds-bg hover:opacity-90 disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-950"
                   >
                     保存
                   </button>

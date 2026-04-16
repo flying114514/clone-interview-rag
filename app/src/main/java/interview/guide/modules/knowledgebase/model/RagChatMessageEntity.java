@@ -6,6 +6,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 /**
  * RAG 聊天消息实体
@@ -20,6 +21,8 @@ import java.time.LocalDateTime;
 @Setter
 @NoArgsConstructor
 public class RagChatMessageEntity {
+
+    private static final ZoneId BEIJING_ZONE_ID = ZoneId.of("Asia/Shanghai");
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -74,13 +77,13 @@ public class RagChatMessageEntity {
 
     @PrePersist
     protected void onCreate() {
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
+        createdAt = LocalDateTime.now(BEIJING_ZONE_ID);
+        updatedAt = LocalDateTime.now(BEIJING_ZONE_ID);
     }
 
     @PreUpdate
     protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now(BEIJING_ZONE_ID);
     }
 
     /**

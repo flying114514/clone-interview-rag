@@ -17,6 +17,16 @@ export interface InterviewQuestion {
   userAnswer: string | null;
   score: number | null;
   feedback: string | null;
+  collected?: boolean;
+}
+
+export interface CollectInterviewQuestionResponse {
+  knowledgeBaseId: number;
+  knowledgeBaseName: string;
+  knowledgeBaseCategory: string;
+  questionIndex: number;
+  alreadyCollected: boolean;
+  collected: boolean;
 }
 
 export type QuestionType = 

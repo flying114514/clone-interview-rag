@@ -50,7 +50,10 @@ public interface ResumeMapper {
             resume.getAccessCount(),
             latestScore,
             lastAnalyzedAt,
-            interviewCount
+            interviewCount,
+            resume.getAnalyzeStatus(),
+            resume.getAnalyzeError(),
+            resume.getStorageUrl()
         );
     }
 

@@ -27,6 +27,7 @@ public enum ErrorCode {
     RESUME_FILE_TYPE_NOT_SUPPORTED(2006, "不支持的文件类型"),
     RESUME_ANALYSIS_FAILED(2007, "简历分析失败"),
     RESUME_ANALYSIS_NOT_FOUND(2008, "简历分析结果不存在"),
+    RESUME_AI_GENERATE_FAILED(2009, "AI生成简历失败"),
     
     // ========== 面试模块错误 3xxx ==========
     INTERVIEW_SESSION_NOT_FOUND(3001, "面试会话不存在"),
@@ -61,7 +62,11 @@ public enum ErrorCode {
     AI_RATE_LIMIT_EXCEEDED(7005, "AI服务调用频率超限"),
 
     // ========== 限流模块错误 8xxx ==========
-    RATE_LIMIT_EXCEEDED(8001, "请求过于频繁，请稍后再试");
+    RATE_LIMIT_EXCEEDED(8001, "请求过于频繁，请稍后再试"),
+
+    // ========== 认证模块 9xxx ==========
+    AUTH_INVALID_CREDENTIALS(9001, "用户名或密码错误"),
+    AUTH_USERNAME_TAKEN(9002, "用户名已被占用");
     
     private final Integer code;
     private final String message;

@@ -1,5 +1,6 @@
 import { request } from './request';
 import type {
+  CollectInterviewQuestionResponse,
   CreateInterviewRequest,
   CurrentQuestionResponse,
   InterviewReport,
@@ -40,7 +41,7 @@ export const interviewApi = {
       `/api/interview/sessions/${req.sessionId}/answers`,
       { questionIndex: req.questionIndex, answer: req.answer },
       {
-        timeout: 180000, // 3分钟超时
+        timeout: 180000,
       }
     );
   },
@@ -50,7 +51,7 @@ export const interviewApi = {
    */
   async getReport(sessionId: string): Promise<InterviewReport> {
     return request.get<InterviewReport>(`/api/interview/sessions/${sessionId}/report`, {
-      timeout: 180000, // 3分钟超时，AI评估需要时间
+      timeout: 180000,
     });
   },
 
@@ -61,7 +62,6 @@ export const interviewApi = {
     try {
       return await request.get<InterviewSession>(`/api/interview/sessions/unfinished/${resumeId}`);
     } catch {
-      // 如果没有未完成的会话，返回null
       return null;
     }
   },
@@ -81,5 +81,21 @@ export const interviewApi = {
    */
   async completeInterview(sessionId: string): Promise<void> {
     return request.post<void>(`/api/interview/sessions/${sessionId}/complete`);
+  },
+
+  /**
+   * 收藏题目到知识库
+   */
+  async collectQuestion(sessionId: string, questionIndex: number): Promise<CollectInterviewQuestionResponse> {
+    return request.post<CollectInterviewQuestionResponse>(`/api/interview/sessions/${sessionId}/collect`, {
+      questionIndex,
+    });
+  },
+
+  /**
+   * 取消收藏题目
+   */
+  async uncollectQuestion(sessionId: string, questionIndex: number): Promise<CollectInterviewQuestionResponse> {
+    return request.delete<CollectInterviewQuestionResponse>(`/api/interview/sessions/${sessionId}/collect?questionIndex=${questionIndex}`);
   },
 };

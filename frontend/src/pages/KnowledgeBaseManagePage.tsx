@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useRef, useState} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState, Fragment} from 'react';
 import {AnimatePresence, motion} from 'framer-motion';
 import {
   AlertCircle,
@@ -11,6 +11,8 @@ import {
   Edit3,
   Eye,
   FileText,
+  Folder,
+  FolderOpen,
   HardDrive,
   Loader2,
   MessageSquare,
@@ -20,6 +22,7 @@ import {
   Upload,
   X,
 } from 'lucide-react';
+import type {LucideIcon} from 'lucide-react';
 import {knowledgeBaseApi, KnowledgeBaseItem, KnowledgeBaseStats, SortOption, VectorStatus,} from '../api/knowledgebase';
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
 
@@ -40,13 +43,15 @@ function formatFileSize(bytes: number): string {
 // 格式化日期
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr);
-  return date.toLocaleDateString('zh-CN', {
+  return new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
-  });
+    hour12: false,
+  }).format(date);
 }
 
 // 状态图标组件
@@ -85,27 +90,25 @@ function getStatusText(status: VectorStatus): string {
 function StatCard({
   icon: Icon,
   label,
-  value,
-  color,
+  value
 }: {
-  icon: React.ComponentType<{ className?: string }>;
+  icon: LucideIcon;
   label: string;
   value: number;
-  color: string;
 }) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm border border-slate-100 dark:border-slate-700"
+      initial={{opacity: 0, y: 16}}
+      animate={{opacity: 1, y: 0}}
+      className="rounded-[20px] border border-white/12 bg-white/[0.05] p-5 backdrop-blur-[20px]"
     >
       <div className="flex items-center gap-4">
-        <div className={`p-3 rounded-lg ${color}`}>
-          <Icon className="w-6 h-6 text-white" />
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-pill bg-ds-fg text-ds-bg dark:bg-neutral-100 dark:text-neutral-950">
+          <Icon className="h-5 w-5" strokeWidth={2} />
         </div>
         <div>
-            <p className="text-sm text-slate-500 dark:text-slate-400">{label}</p>
-            <p className="text-2xl font-bold text-slate-800 dark:text-white">{value.toLocaleString()}</p>
+          <p className="text-[12px] font-bold uppercase tracking-wide text-ds-fg-muted dark:text-neutral-500">{label}</p>
+          <p className="text-2xl font-black tracking-tight text-ds-fg dark:text-neutral-50">{value.toLocaleString()}</p>
         </div>
       </div>
     </motion.div>
@@ -129,8 +132,41 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
   const [savingCategory, setSavingCategory] = useState(false);
   const categoryInputRef = useRef<HTMLInputElement>(null);
 
-  // 重新向量化状态
   const [revectorizing, setRevectorizing] = useState<number | null>(null);
+  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
+
+  const groupedKnowledgeBases = useMemo(() => {
+    const folders: Array<{ category: string; items: KnowledgeBaseItem[] }> = [];
+    const regularItems: KnowledgeBaseItem[] = [];
+
+    const folderMap = new Map<string, KnowledgeBaseItem[]>();
+    knowledgeBases.forEach(kb => {
+      if (kb.category?.startsWith('面试收藏/')) {
+        const list = folderMap.get(kb.category) || [];
+        list.push(kb);
+        folderMap.set(kb.category, list);
+      } else {
+        regularItems.push(kb);
+      }
+    });
+
+    folderMap.forEach((items, category) => {
+      folders.push({
+        category,
+        items: items.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN')),
+      });
+    });
+
+    folders.sort((a, b) => b.category.localeCompare(a.category, 'zh-CN'));
+    return { folders, regularItems };
+  }, [knowledgeBases]);
+
+  const toggleFolder = (category: string) => {
+    setExpandedFolders(prev => ({
+      ...prev,
+      [category]: !prev[category],
+    }));
+  };
 
   // 加载数据（不显示loading状态，用于轮询）
   const loadDataSilent = useCallback(async () => {
@@ -287,103 +323,86 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
   };
 
   return (
-    <div className="max-w-7xl mx-auto">
-      {/* 页面标题 */}
-      <div className="flex items-center justify-between mb-8">
+    <div className="relative mx-auto max-w-7xl">
+      <div className="pointer-events-none absolute left-1/2 top-[-180px] h-[360px] w-[680px] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(56,189,248,0.24)_0%,rgba(99,102,241,0.14)_42%,transparent_72%)] blur-2xl" />
+      <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
         <div>
-            <h1 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-3">
-            <Database className="w-7 h-7 text-primary-500" />
+          <h1 className="flex items-center gap-3 text-[clamp(2rem,4vw,3rem)] leading-[0.96] tracking-[-0.04em] text-white [font-family:'Playfair_Display','Times_New_Roman',serif]">
+            <Database className="h-8 w-8 text-ds-fg dark:text-neutral-200" strokeWidth={1.75} />
             知识库管理
           </h1>
-            <p className="text-slate-500 dark:text-slate-400 mt-1">管理您的知识库文件，查看使用统计</p>
+          <p className="mt-1 text-white/68">管理您的知识库文件，查看使用统计</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-2">
           <button
+            type="button"
             onClick={onUpload}
-            className="flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors"
+            className="inline-flex items-center gap-2 rounded-pill bg-ds-fg px-4 py-2.5 text-sm font-black text-ds-bg transition hover:opacity-90 dark:bg-neutral-100 dark:text-neutral-950"
           >
-            <Upload className="w-4 h-4" />
+            <Upload className="h-4 w-4" strokeWidth={2} />
             上传知识库
           </button>
           <button
+            type="button"
             onClick={onChat}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+            className="inline-flex items-center gap-2 rounded-pill border border-ds-border-strong bg-ds-bg px-4 py-2.5 text-sm font-bold text-ds-fg transition hover:bg-ds-bg-subtle dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:hover:bg-neutral-900"
           >
-            <MessageSquare className="w-4 h-4" />
+            <MessageSquare className="h-4 w-4" strokeWidth={1.75} />
             问答助手
           </button>
         </div>
       </div>
       {/* 统计卡片 */}
       {stats && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <StatCard
-            icon={Database}
-            label="知识库总数"
-            value={stats.totalCount}
-            color="bg-primary-500"
-          />
-          <StatCard
-            icon={MessageSquare}
-            label="总提问次数"
-            value={stats.totalQuestionCount}
-            color="bg-indigo-500"
-          />
-          <StatCard
-            icon={Eye}
-            label="总访问次数"
-            value={stats.totalAccessCount}
-            color="bg-emerald-500"
-          />
+        <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-5">
+          <StatCard icon={Database} label="知识库总数" value={stats.totalCount} />
+          <StatCard icon={MessageSquare} label="总提问次数" value={stats.totalQuestionCount} />
+          <StatCard icon={Eye} label="总访问次数" value={stats.totalAccessCount} />
         </div>
       )}
 
       {/* 搜索和筛选栏 */}
-        <div
-            className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-100 dark:border-slate-700 mb-6">
+        <div className="mb-6 rounded-[22px] border border-white/12 bg-white/[0.05] p-4 shadow-[0_18px_60px_rgba(2,6,23,0.5)] backdrop-blur-[20px]">
         <div className="flex flex-wrap items-center gap-4">
-          {/* 搜索框 */}
-          <form onSubmit={handleSearch} className="flex-1 min-w-[200px]">
+          <form onSubmit={handleSearch} className="min-w-[200px] flex-1">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ds-fg-muted" strokeWidth={1.75} />
               <input
                 type="text"
                 value={searchKeyword}
-                onChange={(e) => setSearchKeyword(e.target.value)}
+                onChange={e => setSearchKeyword(e.target.value)}
                 placeholder="搜索知识库名称..."
-                className="w-full pl-10 pr-4 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+                className="w-full rounded-full border border-white/16 bg-white/[0.05] py-2 pl-10 pr-4 text-sm text-white focus:border-cyan-300/45 focus:outline-none"
               />
             </div>
           </form>
 
-          {/* 排序选择 */}
           <div className="relative">
             <select
               value={sortBy}
-              onChange={(e) => {
+              onChange={e => {
                 setSortBy(e.target.value as SortOption);
                 setSearchKeyword('');
                 setSelectedCategory(null);
               }}
-              className="appearance-none pl-4 pr-10 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white cursor-pointer"
+              className="cursor-pointer appearance-none rounded-full border border-white/16 bg-white/[0.05] py-2 pl-4 pr-10 text-sm font-semibold text-white/88 focus:border-cyan-300/45 focus:outline-none [&>option]:bg-[#0f1a2a] [&>option]:text-white"
             >
               <option value="time">按时间排序</option>
               <option value="size">按大小排序</option>
               <option value="access">按访问排序</option>
               <option value="question">按提问排序</option>
             </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ds-fg-muted" />
           </div>
 
-          {/* 分类筛选 */}
           <div className="relative">
             <select
               value={selectedCategory || ''}
-              onChange={(e) => {
+              onChange={e => {
                 setSelectedCategory(e.target.value || null);
                 setSearchKeyword('');
               }}
-              className="appearance-none pl-4 pr-10 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white cursor-pointer"
+              className="cursor-pointer appearance-none rounded-full border border-white/16 bg-white/[0.05] py-2 pl-4 pr-10 text-sm font-semibold text-white/88 focus:border-cyan-300/45 focus:outline-none [&>option]:bg-[#0f1a2a] [&>option]:text-white"
             >
               <option value="">全部分类</option>
               {categories.map((cat) => (
@@ -392,71 +411,134 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                 </option>
               ))}
             </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ds-fg-muted" />
           </div>
         </div>
       </div>
 
-      {/* 知识库列表 */}
-        <div
-            className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
+        <div className="overflow-hidden rounded-[22px] border border-white/12 bg-white/[0.05] shadow-[0_20px_70px_rgba(2,6,23,0.55)] backdrop-blur-[20px]">
         {loading ? (
           <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-8 h-8 text-primary-500 animate-spin" />
+            <Loader2 className="h-8 w-8 animate-spin text-ds-fg-muted dark:text-neutral-400" />
           </div>
         ) : knowledgeBases.length === 0 ? (
-          <div className="text-center py-20">
-            <HardDrive className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-              <p className="text-slate-500 dark:text-slate-400">暂无知识库</p>
+          <div className="py-20 text-center">
+            <HardDrive className="mx-auto mb-4 h-16 w-16 text-ds-fg-faint dark:text-neutral-600" strokeWidth={1.25} />
+              <p className="text-ds-fg-muted dark:text-neutral-400">暂无知识库</p>
             <button
+              type="button"
               onClick={onUpload}
-              className="mt-4 text-primary-500 hover:text-primary-600"
+              className="mt-4 text-sm font-bold text-ds-accent hover:underline"
             >
               上传第一个知识库
             </button>
           </div>
         ) : (
           <table className="w-full">
-              <thead className="bg-slate-50 dark:bg-slate-700 border-b border-slate-100 dark:border-slate-600">
+              <thead className="border-b border-white/10 bg-white/[0.06]">
               <tr>
-                  <th className="text-left px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300">
+                  <th className="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wide text-ds-fg-muted dark:text-neutral-500">
                   名称
                 </th>
-                  <th className="text-left px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300">
+                  <th className="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wide text-ds-fg-muted dark:text-neutral-500">
                   分类
                 </th>
-                  <th className="text-left px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300">
+                  <th className="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wide text-ds-fg-muted dark:text-neutral-500">
                   大小
                 </th>
-                  <th className="text-left px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300">
+                  <th className="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wide text-ds-fg-muted dark:text-neutral-500">
                   状态
                 </th>
-                  <th className="text-left px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300">
+                  <th className="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wide text-ds-fg-muted dark:text-neutral-500">
                   提问
                 </th>
-                  <th className="text-left px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300">
+                  <th className="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wide text-ds-fg-muted dark:text-neutral-500">
                   上传时间
                 </th>
-                  <th className="text-right px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300">
+                  <th className="px-6 py-4 text-right text-[11px] font-bold uppercase tracking-wide text-ds-fg-muted dark:text-neutral-500">
                   操作
                 </th>
               </tr>
             </thead>
             <tbody>
-              {knowledgeBases.map((kb, index) => (
+              {groupedKnowledgeBases.folders.map((folder) => {
+                const expanded = Boolean(expandedFolders[folder.category]);
+                return (
+                  <Fragment key={folder.category}>
+                    <tr key={`folder-${folder.category}`} className="border-b border-white/10 bg-white/[0.03]">
+                      <td colSpan={7} className="px-6 py-3">
+                        <button
+                          type="button"
+                          onClick={() => toggleFolder(folder.category)}
+                          className="inline-flex items-center gap-2 rounded-pill border border-white/12 bg-white/[0.06] px-3 py-1.5 text-sm font-semibold text-white/86 transition hover:bg-white/[0.10]"
+                        >
+                          {expanded ? <FolderOpen className="h-4 w-4 text-amber-200" /> : <Folder className="h-4 w-4 text-amber-200" />}
+                          <span>{folder.category}</span>
+                          <span className="text-xs text-white/50">({folder.items.length} 题)</span>
+                        </button>
+                      </td>
+                    </tr>
+                    {expanded && folder.items.map((kb, index) => (
+                      <motion.tr
+                        key={kb.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.04 }}
+                        className="border-b border-white/10 bg-white/[0.04] transition-colors hover:bg-white/[0.06]"
+                      >
+                        <td className="px-6 py-4 pl-10">
+                          <div className="flex items-center gap-3">
+                            <FileText className="h-5 w-5 text-ds-fg-muted" strokeWidth={1.75} />
+                            <div>
+                              <p className="font-semibold text-ds-fg dark:text-neutral-100">{kb.name}</p>
+                              <p className="text-xs text-ds-fg-faint dark:text-neutral-500">{kb.originalFilename}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="inline-flex min-w-[5.5rem] justify-center whitespace-nowrap rounded-pill border border-ds-border bg-ds-bg-subtle px-2 py-1 text-sm font-semibold leading-none text-ds-fg-muted dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300">
+                            收藏题目
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-ds-fg-muted dark:text-neutral-300">{formatFileSize(kb.fileSize)}</td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            <StatusIcon status={kb.vectorStatus} />
+                            <span className="text-sm text-ds-fg-muted dark:text-neutral-300">{getStatusText(kb.vectorStatus)}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-ds-fg-muted dark:text-neutral-300">{kb.questionCount}</td>
+                        <td className="px-6 py-4 text-sm text-ds-fg-faint dark:text-neutral-500">{formatDate(kb.uploadedAt)}</td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <button onClick={() => handleDownload(kb)} className="rounded-pill p-2 text-ds-fg-muted transition-colors hover:bg-ds-bg-subtle hover:text-ds-fg dark:hover:bg-neutral-900 dark:hover:text-neutral-100" title="下载">
+                              <Download className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => setDeleteItem(kb)} className="rounded-pill p-2 text-ds-fg-muted transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400" title="删除">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </motion.tr>
+                    ))}
+                  </Fragment>
+                );
+              })}
+
+              {groupedKnowledgeBases.regularItems.map((kb, index) => (
                 <motion.tr
                   key={kb.id}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.05 }}
-                  className="border-b border-slate-50 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+                  className="border-b border-white/10 transition-colors hover:bg-white/[0.06]"
                 >
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      <FileText className="w-5 h-5 text-slate-400" />
+                      <FileText className="h-5 w-5 text-ds-fg-muted" strokeWidth={1.75} />
                       <div>
-                          <p className="font-medium text-slate-800 dark:text-white">{kb.name}</p>
-                          <p className="text-xs text-slate-400 dark:text-slate-500">{kb.originalFilename}</p>
+                          <p className="font-semibold text-ds-fg dark:text-neutral-100">{kb.name}</p>
+                          <p className="text-xs text-ds-fg-faint dark:text-neutral-500">{kb.originalFilename}</p>
                       </div>
                     </div>
                   </td>
@@ -478,7 +560,7 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                             onKeyDown={(e) => handleCategoryKeyDown(e, kb.id)}
                             placeholder="输入分类名称"
                             list="category-suggestions"
-                            className="w-24 px-2 py-1 text-sm border border-primary-300 dark:border-primary-600 rounded focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+                            className="w-28 rounded-pill border border-ds-border-strong bg-ds-bg px-2 py-1 text-sm text-ds-fg focus:border-ds-fg focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
                             disabled={savingCategory}
                           />
                           <datalist id="category-suggestions">
@@ -501,7 +583,7 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                           <button
                             onClick={handleCancelEditCategory}
                             disabled={savingCategory}
-                            className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 rounded transition-colors disabled:opacity-50"
+                            className="rounded-pill p-1 text-ds-fg-muted transition-colors hover:bg-ds-bg-subtle hover:text-ds-fg disabled:opacity-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
                             title="取消"
                           >
                             <X className="w-4 h-4" />
@@ -516,16 +598,15 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                           className="flex items-center gap-2 group/category"
                         >
                           {kb.category ? (
-                              <span
-                                  className="px-2 py-1 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded text-sm">
+                              <span className="rounded-pill border border-ds-border bg-ds-bg-subtle px-2 py-1 text-sm font-semibold text-ds-fg-muted dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300">
                               {kb.category}
                             </span>
                           ) : (
-                              <span className="text-slate-400 dark:text-slate-500 text-sm">未分类</span>
+                              <span className="text-sm text-ds-fg-faint dark:text-neutral-500">未分类</span>
                           )}
                           <button
                             onClick={() => handleStartEditCategory(kb)}
-                            className="p-1 text-slate-400 hover:text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/30 rounded opacity-0 group-hover/category:opacity-100 transition-all"
+                            className="rounded-pill p-1 text-ds-fg-muted opacity-0 transition-all hover:bg-ds-bg-subtle hover:text-ds-fg group-hover/category:opacity-100 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
                             title="编辑分类"
                           >
                             <Edit3 className="w-3.5 h-3.5" />
@@ -534,21 +615,21 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                       )}
                     </AnimatePresence>
                   </td>
-                    <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">
+                    <td className="px-6 py-4 text-sm text-ds-fg-muted dark:text-neutral-300">
                     {formatFileSize(kb.fileSize)}
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
                       <StatusIcon status={kb.vectorStatus} />
-                        <span className="text-sm text-slate-600 dark:text-slate-300">
+                        <span className="text-sm text-ds-fg-muted dark:text-neutral-300">
                         {getStatusText(kb.vectorStatus)}
                       </span>
                     </div>
                   </td>
-                    <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">
+                    <td className="px-6 py-4 text-sm text-ds-fg-muted dark:text-neutral-300">
                     {kb.questionCount}
                   </td>
-                    <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400">
+                    <td className="px-6 py-4 text-sm text-ds-fg-faint dark:text-neutral-500">
                     {formatDate(kb.uploadedAt)}
                   </td>
                   <td className="px-6 py-4 text-right">
@@ -556,7 +637,7 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                       {/* 下载按钮 */}
                       <button
                         onClick={() => handleDownload(kb)}
-                        className="p-2 text-slate-400 hover:text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/30 rounded-lg transition-colors"
+                        className="rounded-pill p-2 text-ds-fg-muted transition-colors hover:bg-ds-bg-subtle hover:text-ds-fg dark:hover:bg-neutral-900 dark:hover:text-neutral-100"
                         title="下载"
                       >
                         <Download className="w-4 h-4" />
@@ -566,7 +647,7 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                         <button
                           onClick={() => handleRevectorize(kb.id)}
                           disabled={revectorizing === kb.id}
-                          className="p-2 text-slate-400 hover:text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/30 rounded-lg transition-colors disabled:opacity-50"
+                          className="rounded-pill p-2 text-ds-fg-muted transition-colors hover:bg-ds-bg-subtle hover:text-ds-fg disabled:opacity-50 dark:hover:bg-neutral-900 dark:hover:text-neutral-100"
                           title="重新向量化"
                         >
                           <RefreshCw className={`w-4 h-4 ${revectorizing === kb.id ? 'animate-spin' : ''}`} />
@@ -575,7 +656,7 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                       {/* 删除按钮 */}
                       <button
                         onClick={() => setDeleteItem(kb)}
-                        className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
+                        className="rounded-pill p-2 text-ds-fg-muted transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
                         title="删除"
                       >
                         <Trash2 className="w-4 h-4" />

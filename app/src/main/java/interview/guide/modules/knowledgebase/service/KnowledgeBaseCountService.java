@@ -2,6 +2,7 @@ package interview.guide.modules.knowledgebase.service;
 
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
+import interview.guide.infrastructure.security.SecurityUtils;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
 import lombok.RequiredArgsConstructor;
@@ -34,13 +35,17 @@ public class KnowledgeBaseCountService {
         if (knowledgeBaseIds == null || knowledgeBaseIds.isEmpty()) {
             return;
         }
+        long userId = SecurityUtils.requireUserId();
 
         // 去重
         List<Long> uniqueIds = knowledgeBaseIds.stream().distinct().toList();
 
-        // 验证所有知识库是否存在
-        Set<Long> existingIds = new HashSet<>(knowledgeBaseRepository.findAllById(uniqueIds)
-                .stream().map(KnowledgeBaseEntity::getId).toList());
+        // 验证所有知识库存在且属于当前用户
+        Set<Long> existingIds = new HashSet<>();
+        for (Long id : uniqueIds) {
+            knowledgeBaseRepository.findByIdAndOwnerUserId(id, userId)
+                .ifPresent(k -> existingIds.add(k.getId()));
+        }
 
         for (Long id : uniqueIds) {
             if (!existingIds.contains(id)) {

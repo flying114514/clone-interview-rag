@@ -17,6 +17,42 @@ import java.util.Optional;
 @Repository
 public interface KnowledgeBaseRepository extends JpaRepository<KnowledgeBaseEntity, Long> {
 
+    List<KnowledgeBaseEntity> findByOwnerUserIdOrderByUploadedAtDesc(Long ownerUserId);
+
+    List<KnowledgeBaseEntity> findByOwnerUserIdAndVectorStatusOrderByUploadedAtDesc(Long ownerUserId, VectorStatus vectorStatus);
+
+    Optional<KnowledgeBaseEntity> findByIdAndOwnerUserId(Long id, Long ownerUserId);
+
+    Optional<KnowledgeBaseEntity> findByOwnerUserIdAndFileHash(Long ownerUserId, String fileHash);
+
+    Optional<KnowledgeBaseEntity> findByOwnerUserIdAndCategoryAndOriginalFilename(Long ownerUserId, String category, String originalFilename);
+
+    @Query("SELECT DISTINCT k.category FROM KnowledgeBaseEntity k WHERE k.ownerUserId = :uid AND k.category IS NOT NULL ORDER BY k.category")
+    List<String> findDistinctCategoriesByOwnerUserId(@Param("uid") Long ownerUserId);
+
+    List<KnowledgeBaseEntity> findByOwnerUserIdAndCategoryOrderByUploadedAtDesc(Long ownerUserId, String category);
+
+    List<KnowledgeBaseEntity> findByOwnerUserIdAndCategoryIsNullOrderByUploadedAtDesc(Long ownerUserId);
+
+    @Query("SELECT k FROM KnowledgeBaseEntity k WHERE k.ownerUserId = :uid AND (LOWER(k.name) LIKE LOWER(CONCAT('%', :keyword, '%')) OR LOWER(k.originalFilename) LIKE LOWER(CONCAT('%', :keyword, '%'))) ORDER BY k.uploadedAt DESC")
+    List<KnowledgeBaseEntity> searchByOwnerUserIdAndKeyword(@Param("uid") Long ownerUserId, @Param("keyword") String keyword);
+
+    List<KnowledgeBaseEntity> findByOwnerUserIdOrderByFileSizeDesc(Long ownerUserId);
+
+    List<KnowledgeBaseEntity> findByOwnerUserIdOrderByAccessCountDesc(Long ownerUserId);
+
+    List<KnowledgeBaseEntity> findByOwnerUserIdOrderByQuestionCountDesc(Long ownerUserId);
+
+    long countByOwnerUserId(Long ownerUserId);
+
+    long countByOwnerUserIdAndVectorStatus(Long ownerUserId, VectorStatus vectorStatus);
+
+    @Query("SELECT COALESCE(SUM(k.questionCount), 0) FROM KnowledgeBaseEntity k WHERE k.ownerUserId = :uid")
+    long sumQuestionCountByOwnerUserId(@Param("uid") Long ownerUserId);
+
+    @Query("SELECT COALESCE(SUM(k.accessCount), 0) FROM KnowledgeBaseEntity k WHERE k.ownerUserId = :uid")
+    long sumAccessCountByOwnerUserId(@Param("uid") Long ownerUserId);
+
     /**
      * 根据文件哈希查找知识库（用于去重）
      */

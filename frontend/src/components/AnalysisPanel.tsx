@@ -94,7 +94,7 @@ export default function AnalysisPanel({
       case '低':
         return 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-400';
       default:
-        return 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300';
+        return 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-ds-fg dark:text-neutral-200';
     }
   };
 
@@ -120,7 +120,7 @@ export default function AnalysisPanel({
       '结构': 'bg-cyan-100 dark:bg-cyan-900/50 text-cyan-700 dark:text-cyan-300',
       '表达': 'bg-orange-100 dark:bg-orange-900/50 text-orange-700 dark:text-orange-300'
     };
-    return colors[category] || 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300';
+    return colors[category] || 'bg-slate-100 dark:bg-slate-700 text-ds-fg dark:text-neutral-200';
   };
 
   // 检测分析结果是否有效
@@ -145,7 +145,7 @@ export default function AnalysisPanel({
   if (isProcessing) {
     const isExplicitProcessing = analyzeStatus === 'PROCESSING';
     return (
-        <div className="bg-white dark:bg-slate-800 rounded-2xl p-12 text-center">
+        <div className="rounded-[26px] border border-white/12 bg-white/[0.06] p-12 text-center shadow-[0_18px_48px_rgba(2,6,23,0.36)] backdrop-blur-[22px]">
           <div
               className="w-16 h-16 mx-auto mb-6 bg-blue-100 dark:bg-blue-900/50 rounded-full flex items-center justify-center">
           {isExplicitProcessing ? (
@@ -154,15 +154,15 @@ export default function AnalysisPanel({
               <Clock className="w-8 h-8 text-yellow-500 dark:text-yellow-400"/>
           )}
         </div>
-          <h3 className="text-xl font-semibold text-slate-700 dark:text-slate-300 mb-2">
+          <h3 className="text-xl font-semibold text-ds-fg dark:text-neutral-200 mb-2">
           {isExplicitProcessing ? 'AI 正在分析中...' : '等待分析'}
         </h3>
-          <p className="text-slate-500 dark:text-slate-400 mb-4">
+          <p className="text-ds-fg-muted dark:text-neutral-400 mb-4">
           {isExplicitProcessing
             ? '请稍候，AI 正在对您的简历进行深度分析'
             : '简历已上传成功，即将开始 AI 分析'}
         </p>
-          <p className="text-sm text-slate-400 dark:text-slate-500">页面将自动刷新显示分析结果</p>
+          <p className="text-sm text-ds-fg-faint dark:text-neutral-500">页面将自动刷新显示分析结果</p>
       </div>
     );
   }
@@ -170,13 +170,13 @@ export default function AnalysisPanel({
   // 处理分析失败状态
   if (analyzeStatus === 'FAILED' || !isAnalysisValid) {
     return (
-        <div className="bg-white dark:bg-slate-800 rounded-2xl p-12 text-center">
+        <div className="rounded-[26px] border border-white/12 bg-white/[0.06] p-12 text-center shadow-[0_18px_48px_rgba(2,6,23,0.36)] backdrop-blur-[22px]">
           <div
               className="w-16 h-16 mx-auto mb-6 bg-red-100 dark:bg-red-900/50 rounded-full flex items-center justify-center">
             <AlertCircle className="w-8 h-8 text-red-500 dark:text-red-400"/>
         </div>
-          <h3 className="text-xl font-semibold text-slate-700 dark:text-slate-300 mb-2">分析失败</h3>
-          <p className="text-slate-500 dark:text-slate-400 mb-4">AI 服务暂时不可用，请稍后重试</p>
+          <h3 className="text-xl font-semibold text-ds-fg dark:text-neutral-200 mb-2">分析失败</h3>
+          <p className="text-ds-fg-muted dark:text-neutral-400 mb-4">AI 服务暂时不可用，请稍后重试</p>
         {(analyzeError || analysis?.summary) && (
             <div
                 className="mt-4 p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg text-left mb-4">
@@ -187,7 +187,7 @@ export default function AnalysisPanel({
           <motion.button
             onClick={onReanalyze}
             disabled={reanalyzing}
-            className="px-6 py-2.5 bg-primary-500 text-white rounded-xl font-medium hover:bg-primary-600 transition-colors disabled:opacity-50 flex items-center gap-2 mx-auto"
+            className="mx-auto flex items-center gap-2 rounded-pill bg-ds-fg px-6 py-2.5 text-sm font-black text-ds-bg transition-colors hover:opacity-90 disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-950"
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
           >
@@ -206,25 +206,25 @@ export default function AnalysisPanel({
   const expressionScore = analysis.expressionScore || 0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 text-white">
       {/* 核心评价和雷达图 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* 核心评价 */}
         <motion.div
-            className="bg-white dark:bg-slate-800 rounded-2xl p-6"
+            className="rounded-[26px] border border-white/12 bg-white/[0.06] p-6 shadow-[0_18px_48px_rgba(2,6,23,0.36)] backdrop-blur-[22px]"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
         >
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
+          <div className="flex items-center justify-between mb-6 text-white">
+            <div className="flex items-center gap-2 text-white/72">
               <TrendingUp className="w-5 h-5" />
               <span className="font-semibold">核心评价</span>
             </div>
             <motion.button
               onClick={onExport}
               disabled={exporting}
-              className="px-4 py-2 border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 rounded-lg text-slate-600 dark:text-slate-300 text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-600 transition-all disabled:opacity-50 flex items-center gap-2"
+              className="flex items-center gap-2 rounded-pill border border-white/12 bg-black/20 px-4 py-2 text-sm font-bold text-white transition-all hover:bg-black/28 disabled:opacity-50"
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
             >
@@ -234,21 +234,20 @@ export default function AnalysisPanel({
           </div>
 
           <div
-              className="bg-gradient-to-br from-emerald-50 dark:from-emerald-900/30 to-green-50 dark:to-slate-800 rounded-xl p-6">
-            <p className="text-lg text-slate-800 dark:text-white leading-relaxed mb-6">
+              className="rounded-[24px] border border-white/10 bg-black/20 p-6 backdrop-blur-sm">
+            <p className="mb-6 text-lg leading-relaxed text-white/92">
               {analysis.summary || '候选人具备扎实的技术基础，有大型项目架构经验。'}
             </p>
 
             <div className="grid grid-cols-2 gap-4 mb-4">
-              <div className="bg-white dark:bg-slate-800 rounded-xl p-5">
-                <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 block mb-2">总分</span>
-                <span className="text-4xl font-bold text-slate-900 dark:text-white">{analysis.overallScore || 0}</span>
-                <span className="text-sm text-slate-500 dark:text-slate-400">/ 100</span>
+              <div className="rounded-[22px] border border-white/10 bg-black/20 p-5 backdrop-blur-sm">
+                <span className="mb-2 block text-sm font-semibold text-cyan-200/90">总分</span>
+                <span className="text-4xl font-bold text-white">{analysis.overallScore || 0}</span>
+                <span className="text-sm text-white/60">/ 100</span>
               </div>
-              <div className="bg-white dark:bg-slate-800 rounded-xl p-5">
-                <span
-                    className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 block mb-2">分析时间</span>
-                <span className="text-sm text-slate-700 dark:text-slate-300">
+              <div className="rounded-[22px] border border-white/10 bg-black/20 p-5 backdrop-blur-sm">
+                <span className="mb-2 block text-sm font-semibold text-fuchsia-200/90">分析时间</span>
+                <span className="text-sm text-white/80">
                   {formatDateTime(analysis.analyzedAt)}
                 </span>
               </div>
@@ -256,13 +255,13 @@ export default function AnalysisPanel({
 
             {/* 优势标签 */}
             {analysis.strengths && analysis.strengths.length > 0 && (
-                <div className="bg-white dark:bg-slate-800 rounded-xl p-4">
+                <div className="rounded-[22px] border border-white/10 bg-black/20 p-4 backdrop-blur-sm">
                   <span
-                      className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 block mb-3">优势亮点</span>
+                      className="mb-3 block text-sm font-semibold text-emerald-200/90">优势亮点</span>
                 <div className="flex flex-wrap gap-2">
                   {analysis.strengths.map((s: string, i: number) => (
                       <span key={i}
-                            className="px-3 py-1.5 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 rounded-lg text-sm font-medium">
+                            className="rounded-xl border border-emerald-300/22 bg-emerald-400/12 px-3 py-1.5 text-sm font-medium text-emerald-100">
                       {s}
                     </span>
                   ))}
@@ -274,14 +273,14 @@ export default function AnalysisPanel({
 
         {/* 多维度评分雷达图 */}
         <motion.div
-            className="bg-white dark:bg-slate-800 rounded-2xl p-6"
+            className="rounded-[26px] border border-white/12 bg-white/[0.06] p-6 shadow-[0_18px_48px_rgba(2,6,23,0.36)] backdrop-blur-[22px]"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
         >
-          <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 mb-6">
-            <Target className="w-5 h-5" />
-            <span className="font-semibold">多维度评分</span>
+          <div className="flex items-center gap-2 mb-6 text-white/72">
+            <Target className="w-5 h-5 text-fuchsia-200" />
+            <span className="font-semibold text-white">多维度评分</span>
           </div>
 
           <RadarChart data={radarData} height={320} />
@@ -330,15 +329,15 @@ export default function AnalysisPanel({
 
       {/* 改进建议 - 按优先级分类 */}
       <motion.div
-          className="bg-white dark:bg-slate-800 rounded-2xl p-6"
+          className="rounded-[26px] border border-white/12 bg-white/[0.06] p-6 shadow-[0_18px_48px_rgba(2,6,23,0.36)] backdrop-blur-[22px]"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
       >
-        <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 mb-6">
-          <CheckCircle2 className="w-5 h-5" />
-          <span className="font-semibold">改进建议</span>
-          <span className="text-sm text-slate-400 dark:text-slate-500">
+        <div className="mb-6 flex items-center gap-2 text-white/72">
+          <CheckCircle2 className="w-5 h-5 text-emerald-200" />
+          <span className="font-semibold text-white">改进建议</span>
+          <span className="text-sm text-white/46">
             ({analysis.suggestions?.length || 0} 条)
           </span>
         </div>
@@ -381,7 +380,7 @@ export default function AnalysisPanel({
           )}
 
           {analysis.suggestions?.length === 0 && (
-              <div className="text-center py-8 text-slate-500 dark:text-slate-400">暂无改进建议</div>
+              <div className="py-8 text-center text-white/52">暂无改进建议</div>
           )}
         </div>
       </motion.div>
@@ -407,19 +406,19 @@ function SuggestionSection({
 }) {
   const priorityColors: Record<string, { bg: string; text: string; border: string }> = {
     '高': {
-      bg: 'bg-red-100 dark:bg-red-900/50',
-      text: 'text-red-700 dark:text-red-300',
-      border: 'bg-red-100 dark:bg-red-900/50'
+      bg: 'bg-red-400/14',
+      text: 'text-red-100',
+      border: 'bg-red-300/24'
     },
     '中': {
-      bg: 'bg-amber-100 dark:bg-amber-900/50',
-      text: 'text-amber-700 dark:text-amber-300',
-      border: 'bg-amber-100 dark:bg-amber-900/50'
+      bg: 'bg-amber-400/14',
+      text: 'text-amber-100',
+      border: 'bg-amber-300/24'
     },
     '低': {
-      bg: 'bg-blue-100 dark:bg-blue-900/50',
-      text: 'text-blue-700 dark:text-blue-300',
-      border: 'bg-blue-100 dark:bg-blue-900/50'
+      bg: 'bg-blue-400/14',
+      text: 'text-blue-100',
+      border: 'bg-blue-300/24'
     }
   };
 
@@ -428,16 +427,16 @@ function SuggestionSection({
   return (
     <div>
       <div className="flex items-center gap-2 mb-4">
-        <span className={`px-3 py-1 ${colors.bg} ${colors.text} rounded-full text-sm font-semibold`}>
+        <span className={`rounded-full px-3 py-1 text-sm font-semibold ${colors.bg} ${colors.text}`}>
           {priority}优先级 ({suggestions.length})
         </span>
-        <div className={`flex-1 h-px ${colors.border}`}></div>
+        <div className={`h-px flex-1 ${colors.border}`}></div>
       </div>
       <div className="space-y-3">
         {suggestions.map((s: any, i: number) => (
             <motion.div
             key={`${priority}-${i}`}
-            className={`p-4 rounded-xl border-2 ${getPriorityColor(priority)}`}
+            className={`rounded-[22px] border p-4 backdrop-blur-sm ${getPriorityColor(priority)}`}
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: delay + i * 0.1 }}
@@ -451,8 +450,8 @@ function SuggestionSection({
               </span>
             </div>
             <div className="mb-2">
-              <p className="font-semibold text-slate-900 dark:text-white mb-1">{s.issue || '问题描述'}</p>
-              <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">{s.recommendation || s}</p>
+              <p className="mb-1 font-semibold text-white">{s.issue || '问题描述'}</p>
+              <p className="text-sm leading-relaxed text-white/82">{s.recommendation || s}</p>
             </div>
           </motion.div>
         ))}

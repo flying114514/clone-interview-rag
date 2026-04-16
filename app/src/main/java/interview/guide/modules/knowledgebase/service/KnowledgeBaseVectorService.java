@@ -1,5 +1,7 @@
 package interview.guide.modules.knowledgebase.service;
 
+import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
+import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
 import interview.guide.modules.knowledgebase.repository.VectorRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
@@ -29,9 +31,16 @@ public class KnowledgeBaseVectorService {
     private final VectorStore vectorStore;
     private final TextSplitter textSplitter;
     private final VectorRepository vectorRepository;
-    public KnowledgeBaseVectorService(VectorStore vectorStore, VectorRepository vectorRepository) {
+    private final KnowledgeBaseRepository knowledgeBaseRepository;
+
+    public KnowledgeBaseVectorService(
+        VectorStore vectorStore,
+        VectorRepository vectorRepository,
+        KnowledgeBaseRepository knowledgeBaseRepository
+    ) {
         this.vectorStore = vectorStore;
         this.vectorRepository = vectorRepository;
+        this.knowledgeBaseRepository = knowledgeBaseRepository;
         // 使用TokenTextSplitter，每个chunk约500 tokens，重叠50 tokens
         this.textSplitter = new TokenTextSplitter();
     }
@@ -44,6 +53,10 @@ public class KnowledgeBaseVectorService {
     public void vectorizeAndStore(Long knowledgeBaseId, String content) {
         log.info("开始向量化知识库: kbId={}, contentLength={}", knowledgeBaseId, content.length());
         try {
+            Long ownerUserId = knowledgeBaseRepository.findById(knowledgeBaseId)
+                .map(KnowledgeBaseEntity::getOwnerUserId)
+                .orElse(null);
+
             // 1. 先删除该知识库的旧向量数据
             deleteByKnowledgeBaseId(knowledgeBaseId);
             
@@ -56,7 +69,12 @@ public class KnowledgeBaseVectorService {
             
             // 3. 为每个chunk添加metadata（知识库ID）
             // 统一使用 String 类型存储，确保查询一致性
-            chunks.forEach(chunk -> chunk.getMetadata().put("kb_id", knowledgeBaseId.toString()));
+            chunks.forEach(chunk -> {
+                chunk.getMetadata().put("kb_id", knowledgeBaseId.toString());
+                if (ownerUserId != null) {
+                    chunk.getMetadata().put("user_id", ownerUserId.toString());
+                }
+            });
             // 4. 分批向量化并存储（阿里云 DashScope API 限制 batch size <= 10）
             int totalChunks = chunks.size();
             int batchCount = (totalChunks + MAX_BATCH_SIZE - 1) / MAX_BATCH_SIZE; // 向上取整

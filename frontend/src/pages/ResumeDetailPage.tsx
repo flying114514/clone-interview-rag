@@ -7,6 +7,7 @@ import InterviewPanel from '../components/InterviewPanel';
 import InterviewDetailPanel from '../components/InterviewDetailPanel';
 import {formatDateOnly} from '../utils/date';
 import {CheckSquare, ChevronLeft, Clock, Download, MessageSquare, Mic} from 'lucide-react';
+import { toast } from 'sonner';
 
 interface ResumeDetailPageProps {
   resumeId: number;
@@ -46,6 +47,7 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
       setResume(data);
     } catch (err) {
       console.error('加载简历详情失败', err);
+      toast.error('加载简历详情失败');
     } finally {
       setLoading(false);
     }
@@ -81,6 +83,7 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
       await loadResumeDetailSilent();
     } catch (err) {
       console.error('重新分析失败', err);
+      toast.error('重新分析失败');
     } finally {
       setReanalyzing(false);
     }
@@ -121,8 +124,9 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
+      toast.success('简历分析报告导出成功');
     } catch (err) {
-      alert('导出失败，请重试');
+      toast.error('导出失败，请重试');
     } finally {
       setExporting(null);
     }
@@ -140,8 +144,9 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
+      toast.success('面试报告导出成功');
     } catch (err) {
-      alert('导出失败，请重试');
+      toast.error('导出失败，请重试');
     } finally {
       setExporting(null);
     }
@@ -154,7 +159,7 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
       setSelectedInterview(detail);
       setDetailView('interviewDetail');
     } catch (err) {
-      alert('加载面试详情失败');
+      toast.error('加载面试详情失败');
     } finally {
       setLoadingInterview(false);
     }
@@ -200,11 +205,11 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-96">
-          <motion.div
-              className="w-12 h-12 border-4 border-slate-200 dark:border-slate-600 border-t-primary-500 rounded-full"
-          animate={{ rotate: 360 }}
-          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+      <div className="flex h-96 items-center justify-center">
+        <motion.div
+          className="h-12 w-12 rounded-full border-2 border-ds-border border-t-ds-fg dark:border-neutral-800 dark:border-t-neutral-100"
+          animate={{rotate: 360}}
+          transition={{duration: 1, repeat: Infinity, ease: 'linear'}}
         />
       </div>
     );
@@ -212,9 +217,11 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
 
   if (!resume) {
     return (
-      <div className="text-center py-20">
-        <p className="text-red-500 mb-4">加载失败，请返回重试</p>
-        <button onClick={onBack} className="px-6 py-2 bg-primary-500 text-white rounded-lg">返回列表</button>
+      <div className="py-20 text-center">
+        <p className="mb-4 text-red-600 dark:text-red-400">加载失败，请返回重试</p>
+        <button type="button" onClick={onBack} className="rounded-pill bg-ds-fg px-6 py-2.5 text-sm font-bold text-ds-bg dark:bg-neutral-100 dark:text-neutral-950">
+          返回列表
+        </button>
       </div>
     );
   }
@@ -229,25 +236,28 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="w-full"
+      className="relative w-full"
     >
+      <div className="pointer-events-none absolute left-1/2 top-[-180px] h-[380px] w-[760px] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(56,189,248,0.24)_0%,rgba(99,102,241,0.16)_42%,transparent_72%)] blur-3xl" />
+      <div className="pointer-events-none absolute right-[-120px] top-20 h-[260px] w-[260px] rounded-full bg-[radial-gradient(circle,rgba(244,114,182,0.14)_0%,transparent_70%)] blur-3xl" />
       {/* 顶部导航栏 */}
-      <div className="flex justify-between items-center mb-8 flex-wrap gap-4">
+      <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-            <motion.button
+          <motion.button
+            type="button"
             onClick={detailView === 'interviewDetail' ? handleBackToInterviewList : onBack}
-            className="w-10 h-10 bg-white dark:bg-slate-800 rounded-xl flex items-center justify-center text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-700 dark:hover:text-slate-300 transition-all shadow-sm"
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+            className="flex h-10 w-10 items-center justify-center rounded-pill border border-ds-border-strong bg-ds-bg text-ds-fg-muted transition-all hover:bg-ds-bg-subtle dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-400 dark:hover:bg-neutral-900"
+            whileHover={{scale: 1.05}}
+            whileTap={{scale: 0.95}}
           >
-            <ChevronLeft className="w-5 h-5" />
+            <ChevronLeft className="h-5 w-5" strokeWidth={1.75} />
           </motion.button>
           <div>
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+            <h2 className="text-xl font-black tracking-tight text-ds-fg dark:text-neutral-50">
               {detailView === 'interviewDetail' ? `面试详情 #${selectedInterview?.sessionId?.slice(-6) || ''}` : resume.filename}
             </h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-              <Clock className="w-4 h-4" />
+            <p className="flex items-center gap-1.5 text-sm text-ds-fg-muted dark:text-neutral-400">
+              <Clock className="h-4 w-4" strokeWidth={1.75} />
                   {detailView === 'interviewDetail'
                 ? `完成于 ${formatDateOnly(selectedInterview?.completedAt || selectedInterview?.createdAt || '')}`
                 : `上传于 ${formatDateOnly(resume.uploadedAt)}`
@@ -259,24 +269,26 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
         <div className="flex gap-3">
           {detailView === 'interviewDetail' && selectedInterview && (
             <motion.button
+              type="button"
               onClick={() => handleExportInterviewPdf(selectedInterview.sessionId)}
               disabled={exporting === selectedInterview.sessionId}
-              className="px-5 py-2.5 border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 rounded-xl text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-50 transition-all disabled:opacity-50 flex items-center gap-2"
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
+              className="flex items-center gap-2 rounded-pill border border-ds-border-strong bg-ds-bg px-5 py-2.5 text-sm font-bold text-ds-fg transition-all hover:bg-ds-bg-subtle disabled:opacity-50 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:hover:bg-neutral-900"
+              whileHover={{scale: 1.02}}
+              whileTap={{scale: 0.98}}
             >
-              <Download className="w-4 h-4" />
-              {exporting === selectedInterview.sessionId ? '导出中...' : '导出 PDF'}
+              <Download className="h-4 w-4" strokeWidth={1.75} />
+              {exporting === selectedInterview.sessionId ? '导出中…' : '导出 PDF'}
             </motion.button>
           )}
           {detailView !== 'interviewDetail' && (
             <motion.button
+              type="button"
               onClick={() => onStartInterview(resume.resumeText, resumeId)}
-              className="px-5 py-2.5 bg-gradient-to-r from-primary-500 to-primary-600 text-white rounded-xl font-medium shadow-lg shadow-primary-500/30 hover:shadow-xl transition-all flex items-center gap-2"
-              whileHover={{ scale: 1.02, y: -1 }}
-              whileTap={{ scale: 0.98 }}
+              className="flex items-center gap-2 rounded-pill bg-ds-fg px-5 py-2.5 text-sm font-black text-ds-bg shadow-ds-sm transition-all hover:opacity-90 dark:bg-neutral-100 dark:text-neutral-950"
+              whileHover={{scale: 1.02}}
+              whileTap={{scale: 0.98}}
             >
-              <Mic className="w-4 h-4" />
+              <Mic className="h-4 w-4" strokeWidth={1.75} />
               开始模拟面试
             </motion.button>
           )}
@@ -285,30 +297,35 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
 
       {/* 标签页切换 - 仅在非面试详情时显示 */}
       {detailView !== 'interviewDetail' && (
-          <div className="bg-white dark:bg-slate-800 rounded-2xl p-2 mb-6 inline-flex gap-1">
-          {tabs.map((tab) => (
+        <div className="mb-6 inline-flex gap-1 rounded-pill border border-white/12 bg-white/[0.05] p-1 shadow-[0_18px_40px_rgba(2,6,23,0.28)] backdrop-blur-xl">
+          {tabs.map(tab => (
             <motion.button
               key={tab.id}
+              type="button"
               onClick={() => handleTabChange(tab.id)}
-              className={`relative px-6 py-3 rounded-xl font-medium flex items-center gap-2 transition-colors
-                ${activeTab === tab.id ? 'text-primary-600 dark:text-primary-400' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
+              className={`relative flex items-center gap-2 rounded-pill px-5 py-2.5 text-sm font-bold transition-colors ${
+                activeTab === tab.id
+                  ? 'text-white'
+                  : 'text-white/68 hover:text-white'
+              }`}
+              whileHover={{scale: 1.02}}
+              whileTap={{scale: 0.98}}
             >
               {activeTab === tab.id && (
                 <motion.div
                   layoutId="activeTab"
-                  className="absolute inset-0 bg-primary-50 dark:bg-primary-900 rounded-xl"
-                  transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                  className="absolute inset-0 rounded-pill border border-white/12 bg-white/[0.08] shadow-[0_10px_24px_rgba(15,23,42,0.26)] backdrop-blur-xl"
+                  transition={{type: 'spring', bounce: 0.2, duration: 0.6}}
                 />
               )}
               <span className="relative z-10 flex items-center gap-2">
-                <tab.icon className="w-5 h-5" />
+                <tab.icon className="h-5 w-5" strokeWidth={1.75} />
                 {tab.label}
-                {tab.count !== undefined && tab.count > 0 && (
-                    <span
-                        className="px-2 py-0.5 bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-400 text-xs rounded-full">{tab.count}</span>
-                )}
+                {tab.count !== undefined && tab.count > 0 ? (
+                  <span className="rounded-pill border border-white/12 bg-black/20 px-2 py-0.5 text-xs font-black text-white/70 backdrop-blur-sm">
+                    {tab.count}
+                  </span>
+                ) : null}
               </span>
             </motion.button>
           ))}

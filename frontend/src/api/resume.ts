@@ -1,5 +1,5 @@
 import { request } from './request';
-import type { UploadResponse } from '../types/resume';
+import type { UploadResponse, ResumeAiGenerateRequest, ResumeAiGenerateResponse } from '../types/resume';
 
 export const resumeApi = {
   /**
@@ -9,6 +9,13 @@ export const resumeApi = {
     const formData = new FormData();
     formData.append('file', file);
     return request.upload<UploadResponse>('/api/resumes/upload', formData);
+  },
+
+  /**
+   * AI 生成简历初稿
+   */
+  async generateByAi(payload: ResumeAiGenerateRequest): Promise<ResumeAiGenerateResponse> {
+    return request.post<ResumeAiGenerateResponse>('/api/resumes/ai-generate', payload);
   },
 
   /**

@@ -1,80 +1,217 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
-/* 启用深色模式 - 使用 class 策略 */
 @custom-variant dark (&:where(.dark, .dark *));
 
-
-/* 自定义主题 */
 @theme {
-  --color-primary-50: #eef2ff;
-  --color-primary-100: #e0e7ff;
-  --color-primary-200: #c7d2fe;
-  --color-primary-300: #a5b4fc;
-  --color-primary-400: #818cf8;
-  --color-primary-500: #6366f1;
-  --color-primary-600: #4f46e5;
-  --color-primary-700: #4338ca;
-  --color-primary-800: #3730a3;
-  --color-primary-900: #312e81;
+  --color-app-bg: #020617;
+  --color-app-sidebar: #0b1120;
+  --color-app-surface: rgba(255, 255, 255, 0.05);
+  --color-app-surface-2: rgba(255, 255, 255, 0.08);
+  --color-app-surface-3: rgba(255, 255, 255, 0.12);
+  --color-app-surface-hover: rgba(255, 255, 255, 0.12);
+  --color-app-border: rgba(255, 255, 255, 0.1);
+  --color-app-border-strong: rgba(255, 255, 255, 0.2);
+  --color-app-text: rgba(248, 250, 252, 0.96);
+  --color-app-text-secondary: rgba(226, 232, 240, 0.72);
+  --color-app-text-tertiary: rgba(148, 163, 184, 0.62);
+  --color-app-accent: #38bdf8;
+  --color-app-accent-soft: rgba(56, 189, 248, 0.2);
+  --color-app-accent-strong: #6366f1;
+  --color-app-danger: #fda4af;
 
-    --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
-    'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica,
-    Arial, sans-serif;
+  --color-ds-bg: #020617;
+  --color-ds-bg-subtle: rgba(255, 255, 255, 0.05);
+  --color-ds-bg-composer: rgba(56, 189, 248, 0.12);
+  --color-ds-fg: rgba(248, 250, 252, 0.96);
+  --color-ds-fg-muted: rgba(226, 232, 240, 0.72);
+  --color-ds-fg-faint: rgba(148, 163, 184, 0.52);
+  --color-ds-border: rgba(255, 255, 255, 0.1);
+  --color-ds-border-strong: rgba(255, 255, 255, 0.2);
+  --color-ds-accent: #38bdf8;
+
+  --radius-panel: 18px;
+  --radius-control: 12px;
+  --radius-chip: 999px;
+  --radius-card: 18px;
+  --radius-pill: 999px;
+
+  --shadow-panel: 0 22px 60px rgba(2, 6, 23, 0.62), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  --shadow-overlay: 0 24px 80px rgba(2, 6, 23, 0.72);
+  --shadow-ds-sm: 0 16px 45px rgba(2, 6, 23, 0.5);
+
+  --font-sans: "Outfit", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --ease-standard: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* 自定义基础样式 */
 @layer base {
-  html, body, #root {
-    @apply h-full m-0 p-0;
+  html,
+  body,
+  #root {
+    @apply m-0 h-full p-0;
+  }
+
+  html {
+    color-scheme: dark;
   }
 
   body {
-      @apply antialiased;
-      @apply bg-gradient-to-br from-slate-50 to-indigo-50 text-slate-900;
-      @apply dark:bg-gradient-to-br dark:from-slate-900 dark:to-slate-800 dark:text-slate-100;
+    @apply font-sans antialiased text-app-text;
+    background:
+      radial-gradient(1200px 500px at 50% -120px, rgba(255, 255, 255, 0.42), transparent 62%),
+      linear-gradient(180deg, #1f6fe8 0%, #3f93f7 46%, #86cbff 100%);
+    overflow-x: hidden;
   }
 
-  #root {
-    @apply min-h-screen;
+  * {
+    box-sizing: border-box;
+  }
+
+  *::selection {
+    background: rgba(99, 102, 241, 0.35);
+    color: white;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+
+  a,
+  button,
+  input,
+  textarea,
+  select {
+    transition:
+      background-color 220ms var(--ease-standard),
+      border-color 220ms var(--ease-standard),
+      color 220ms var(--ease-standard),
+      opacity 220ms var(--ease-standard),
+      box-shadow 220ms var(--ease-standard),
+      transform 220ms var(--ease-standard);
+  }
+
+  :focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 1px rgba(125, 211, 252, 0.9), 0 0 0 4px rgba(79, 70, 229, 0.26);
   }
 }
 
-/* 深色模式通用样式 - 自动应用于所有卡片和容器 */
-@layer components {
-    /* 通用卡片背景 */
-    .dark-card {
-        @apply bg-white dark:bg-slate-800 rounded-2xl;
-    }
-
-    /* 通用输入框 */
-    .dark-input {
-        @apply bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-900 dark:text-white;
-    }
-
-    /* 通用文字颜色 */
-    .dark-text {
-        @apply text-slate-900 dark:text-white;
-    }
-
-    .dark-text-muted {
-        @apply text-slate-500 dark:text-slate-400;
-    }
-}
-
-/* 自定义滚动条 */
 @layer utilities {
-  .scrollbar-thin::-webkit-scrollbar {
-    @apply w-2 h-2;
+  .surface-hairline {
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
   }
 
-    .scrollbar-thin::-webkit-scrollbar-track {
-    @apply bg-slate-100 rounded;
-        @apply dark:bg-slate-800;
+  .scrollbar-app {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
   }
 
-    .scrollbar-thin::-webkit-scrollbar-thumb {
-    @apply bg-slate-300 rounded hover:bg-slate-400;
-        @apply dark:bg-slate-600 dark:hover:bg-slate-500;
+  .scrollbar-app::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .scrollbar-app::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.3);
+  }
+
+  .scrollbar-app::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .glass-card {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    box-shadow: 0 20px 70px rgba(14, 116, 255, 0.22);
+  }
+
+  .glass-card-hover {
+    transition: transform 260ms var(--ease-standard), box-shadow 260ms var(--ease-standard), border-color 260ms var(--ease-standard);
+  }
+
+  .glass-card-hover:hover {
+    transform: translateY(-4px);
+    border-color: rgba(125, 211, 252, 0.45);
+    box-shadow: 0 26px 90px rgba(79, 70, 229, 0.35);
+  }
+
+  .ai-gradient-text {
+    background-image: linear-gradient(110deg, #dbeafe 0%, #7dd3fc 30%, #a5b4fc 60%, #e0f2fe 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    background-size: 240% 240%;
+  }
+
+  .ai-gradient-text-animate {
+    animation: ai-gradient-flow 11s linear infinite;
+  }
+
+  .ai-aurora-bg {
+    background-image:
+      radial-gradient(circle at 35% 14%, rgba(56, 189, 248, 0.14), transparent 42%),
+      radial-gradient(circle at 70% 0%, rgba(99, 102, 241, 0.16), transparent 38%),
+      radial-gradient(circle at 50% 55%, rgba(14, 165, 233, 0.06), transparent 50%);
+    animation: ai-aurora-shift 14s ease-in-out infinite alternate;
+  }
+
+  .app-sky-bg {
+    background:
+      radial-gradient(1200px 500px at 50% -120px, rgba(255, 255, 255, 0.42), transparent 62%),
+      linear-gradient(180deg, #1f6fe8 0%, #3f93f7 46%, #86cbff 100%);
+  }
+
+  .app-clouds {
+    position: relative;
+  }
+
+  .app-clouds::before,
+  .app-clouds::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  .app-clouds::before {
+    background:
+      radial-gradient(220px 110px at 8% 10%, rgba(255, 255, 255, 0.55), transparent 72%),
+      radial-gradient(260px 120px at 22% 7%, rgba(255, 255, 255, 0.5), transparent 74%),
+      radial-gradient(280px 130px at 82% 14%, rgba(255, 255, 255, 0.56), transparent 72%),
+      radial-gradient(250px 110px at 92% 42%, rgba(255, 255, 255, 0.46), transparent 72%);
+    filter: blur(10px);
+  }
+
+  .app-clouds::after {
+    background:
+      radial-gradient(200px 100px at 28% 66%, rgba(255, 255, 255, 0.34), transparent 72%),
+      radial-gradient(220px 100px at 74% 62%, rgba(255, 255, 255, 0.3), transparent 72%);
+    filter: blur(8px);
+  }
+}
+
+@keyframes ai-gradient-flow {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes ai-aurora-shift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.75;
+  }
+  100% {
+    transform: translate3d(0, -14px, 0) scale(1.03);
+    opacity: 1;
   }
 }

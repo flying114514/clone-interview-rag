@@ -42,10 +42,10 @@ public class ResumePersistenceService {
      * @param file 上传的文件
      * @return 如果存在返回已有的简历实体，否则返回空
      */
-    public Optional<ResumeEntity> findExistingResume(MultipartFile file) {
+    public Optional<ResumeEntity> findExistingResume(MultipartFile file, Long ownerUserId) {
         try {
             String fileHash = fileHashService.calculateHash(file);
-            Optional<ResumeEntity> existing = resumeRepository.findByFileHash(fileHash);
+            Optional<ResumeEntity> existing = resumeRepository.findByOwnerUserIdAndFileHash(ownerUserId, fileHash);
             
             if (existing.isPresent()) {
                 log.info("检测到重复简历: hash={}", fileHash);
@@ -66,11 +66,12 @@ public class ResumePersistenceService {
      */
     @Transactional(rollbackFor = Exception.class)
     public ResumeEntity saveResume(MultipartFile file, String resumeText,
-                                   String storageKey, String storageUrl) {
+                                   String storageKey, String storageUrl, Long ownerUserId) {
         try {
             String fileHash = fileHashService.calculateHash(file);
             
             ResumeEntity resume = new ResumeEntity();
+            resume.setOwnerUserId(ownerUserId);
             resume.setFileHash(fileHash);
             resume.setOriginalFilename(file.getOriginalFilename());
             resume.setFileSize(file.getSize());
@@ -129,10 +130,15 @@ public class ResumePersistenceService {
     }
     
     /**
-     * 获取所有简历列表
+     * 获取当前用户的所有简历列表
      */
-    public List<ResumeEntity> findAllResumes() {
-        return resumeRepository.findAll();
+    public List<ResumeEntity> findAllResumesForUser(Long ownerUserId) {
+        return resumeRepository.findByOwnerUserIdOrderByUploadedAtDesc(ownerUserId);
+    }
+
+    public ResumeEntity requireResumeOwned(Long id, Long ownerUserId) {
+        return resumeRepository.findByIdAndOwnerUserId(id, ownerUserId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESUME_NOT_FOUND));
     }
     
     /**

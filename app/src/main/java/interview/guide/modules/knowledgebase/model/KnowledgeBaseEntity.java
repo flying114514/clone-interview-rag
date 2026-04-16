@@ -3,23 +3,32 @@ package interview.guide.modules.knowledgebase.model;
 import jakarta.persistence.*;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 /**
  * 知识库实体
  */
 @Entity
-@Table(name = "knowledge_bases", indexes = {
-    @Index(name = "idx_kb_hash", columnList = "fileHash", unique = true),
-    @Index(name = "idx_kb_category", columnList = "category")
-})
+@Table(
+    name = "knowledge_bases",
+    uniqueConstraints = @UniqueConstraint(name = "uk_kb_owner_filehash", columnNames = {"owner_user_id", "file_hash"}),
+    indexes = {
+        @Index(name = "idx_kb_category", columnList = "category")
+    }
+)
 public class KnowledgeBaseEntity {
+
+    private static final ZoneId BEIJING_ZONE_ID = ZoneId.of("Asia/Shanghai");
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // 文件内容的SHA-256哈希值，用于去重
-    @Column(nullable = false, unique = true, length = 64)
+    @Column(name = "owner_user_id")
+    private Long ownerUserId;
+
+    // 文件内容的SHA-256哈希值（与 owner_user_id 组合唯一）
+    @Column(name = "file_hash", nullable = false, length = 64)
     private String fileHash;
 
     // 知识库名称（用户自定义或从文件名提取）
@@ -75,9 +84,16 @@ public class KnowledgeBaseEntity {
     
     @PrePersist
     protected void onCreate() {
-        uploadedAt = LocalDateTime.now();
-        lastAccessedAt = LocalDateTime.now();
-        accessCount = 1;
+        LocalDateTime now = nowInBeijing();
+        if (uploadedAt == null) {
+            uploadedAt = now;
+        }
+        if (lastAccessedAt == null) {
+            lastAccessedAt = now;
+        }
+        if (accessCount == null || accessCount < 1) {
+            accessCount = 1;
+        }
     }
     
     // Getters and Setters
@@ -87,6 +103,14 @@ public class KnowledgeBaseEntity {
     
     public void setId(Long id) {
         this.id = id;
+    }
+
+    public Long getOwnerUserId() {
+        return ownerUserId;
+    }
+
+    public void setOwnerUserId(Long ownerUserId) {
+        this.ownerUserId = ownerUserId;
     }
     
     public String getFileHash() {
@@ -179,12 +203,12 @@ public class KnowledgeBaseEntity {
     
     public void incrementAccessCount() {
         this.accessCount++;
-        this.lastAccessedAt = LocalDateTime.now();
+        this.lastAccessedAt = nowInBeijing();
     }
-    
+
     public void incrementQuestionCount() {
         this.questionCount++;
-        this.lastAccessedAt = LocalDateTime.now();
+        this.lastAccessedAt = nowInBeijing();
     }
 
     public String getCategory() {
@@ -217,6 +241,10 @@ public class KnowledgeBaseEntity {
 
     public void setChunkCount(Integer chunkCount) {
         this.chunkCount = chunkCount;
+    }
+
+    private LocalDateTime nowInBeijing() {
+        return LocalDateTime.now(BEIJING_ZONE_ID);
     }
 }
 

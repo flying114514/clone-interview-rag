@@ -3,6 +3,7 @@ package interview.guide.modules.interview.service;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.common.model.AsyncTaskStatus;
+import interview.guide.infrastructure.security.SecurityUtils;
 import interview.guide.infrastructure.redis.InterviewSessionCache;
 import interview.guide.infrastructure.redis.InterviewSessionCache.CachedSession;
 import interview.guide.modules.interview.listener.EvaluateStreamProducer;
@@ -41,6 +42,9 @@ public class InterviewSessionService {
      * 前端应该先调用 findUnfinishedSession 检查，或者使用 forceCreate 参数强制创建
      */
     public InterviewSessionDTO createSession(CreateInterviewRequest request) {
+        long userId = SecurityUtils.requireUserId();
+        persistenceService.assertResumeOwnedBy(request.resumeId(), userId);
+
         // 如果指定了resumeId且未强制创建，检查是否有未完成的会话
         if (request.resumeId() != null && !Boolean.TRUE.equals(request.forceCreate())) {
             Optional<InterviewSessionDTO> unfinishedOpt = findUnfinishedSession(request.resumeId());
@@ -83,7 +87,7 @@ public class InterviewSessionService {
         if (request.resumeId() != null) {
             try {
                 persistenceService.saveSession(sessionId, request.resumeId(),
-                    questions.size(), questions);
+                    questions.size(), questions, userId);
             } catch (Exception e) {
                 log.warn("保存面试会话到数据库失败: {}", e.getMessage());
             }
@@ -103,6 +107,7 @@ public class InterviewSessionService {
      * 获取会话信息（优先从缓存获取，缓存未命中则从数据库恢复）
      */
     public InterviewSessionDTO getSession(String sessionId) {
+        persistenceService.requireSessionOwnedByUser(sessionId, SecurityUtils.requireUserId());
         // 1. 尝试从 Redis 缓存获取
         Optional<CachedSession> cachedOpt = sessionCache.getSession(sessionId);
         if (cachedOpt.isPresent()) {
@@ -122,6 +127,7 @@ public class InterviewSessionService {
      * 查找并恢复未完成的面试会话
      */
     public Optional<InterviewSessionDTO> findUnfinishedSession(Long resumeId) {
+        persistenceService.assertResumeOwnedBy(resumeId, SecurityUtils.requireUserId());
         try {
             // 1. 先从 Redis 缓存查找
             Optional<String> cachedSessionIdOpt = sessionCache.findUnfinishedSessionId(resumeId);
@@ -164,7 +170,8 @@ public class InterviewSessionService {
      */
     private CachedSession restoreSessionFromDatabase(String sessionId) {
         try {
-            Optional<InterviewSessionEntity> entityOpt = persistenceService.findBySessionId(sessionId);
+            Optional<InterviewSessionEntity> entityOpt = persistenceService.findBySessionIdAndResumeOwnerUserId(
+                sessionId, SecurityUtils.requireUserId());
             return entityOpt.map(this::restoreSessionFromEntity).orElse(null);
         } catch (Exception e) {
             log.error("从数据库恢复会话失败: {}", e.getMessage(), e);
@@ -285,24 +292,27 @@ public class InterviewSessionService {
 
         // 更新问题答案
         InterviewQuestionDTO question = questions.get(index);
+        // 已提交过的题目不允许再次提交
+        if (question.userAnswer() != null && !question.userAnswer().isBlank()) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "该题已提交，不能重复提交");
+        }
         InterviewQuestionDTO answeredQuestion = question.withAnswer(request.answer());
         questions.set(index, answeredQuestion);
 
-        // 移动到下一题
-        int newIndex = index + 1;
+        // 更新当前索引（不自动交卷，只有主动点击“提前交卷”才结束）
+        int persistedCurrentIndex = Math.max(session.getCurrentIndex(), Math.min(index + 1, questions.size() - 1));
 
-        // 检查是否全部完成
-        boolean hasNextQuestion = newIndex < questions.size();
-        InterviewQuestionDTO nextQuestion = hasNextQuestion ? questions.get(newIndex) : null;
+        // 是否还有未回答题目
+        boolean hasNextQuestion = questions.stream().anyMatch(q -> q.userAnswer() == null || q.userAnswer().isBlank());
+        InterviewQuestionDTO nextQuestion = hasNextQuestion ? questions.get(persistedCurrentIndex) : null;
 
-        SessionStatus newStatus = hasNextQuestion ? SessionStatus.IN_PROGRESS : SessionStatus.COMPLETED;
+        // 始终保持进行中，直到用户主动交卷
+        SessionStatus newStatus = SessionStatus.IN_PROGRESS;
 
         // 更新 Redis 缓存
         sessionCache.updateQuestions(request.sessionId(), questions);
-        sessionCache.updateCurrentIndex(request.sessionId(), newIndex);
-        if (newStatus == SessionStatus.COMPLETED) {
-            sessionCache.updateSessionStatus(request.sessionId(), SessionStatus.COMPLETED);
-        }
+        sessionCache.updateCurrentIndex(request.sessionId(), persistedCurrentIndex);
+        sessionCache.updateSessionStatus(request.sessionId(), newStatus);
 
         // 保存答案到数据库
         try {
@@ -311,29 +321,21 @@ public class InterviewSessionService {
                 question.question(), question.category(),
                 request.answer(), 0, null  // 分数在报告生成时更新
             );
-            persistenceService.updateCurrentQuestionIndex(request.sessionId(), newIndex);
-            persistenceService.updateSessionStatus(request.sessionId(),
-                newStatus == SessionStatus.COMPLETED
-                    ? InterviewSessionEntity.SessionStatus.COMPLETED
-                    : InterviewSessionEntity.SessionStatus.IN_PROGRESS);
-
-            // 如果是最后一题，设置评估状态为 PENDING 并触发异步评估
-            if (!hasNextQuestion) {
-                persistenceService.updateEvaluateStatus(request.sessionId(), AsyncTaskStatus.PENDING, null);
-                evaluateStreamProducer.sendEvaluateTask(request.sessionId());
-                log.info("会话 {} 已完成所有问题，评估任务已入队", request.sessionId());
-            }
+            persistenceService.updateCurrentQuestionIndex(request.sessionId(), persistedCurrentIndex);
+            persistenceService.updateSessionStatus(request.sessionId(), InterviewSessionEntity.SessionStatus.IN_PROGRESS);
         } catch (Exception e) {
             log.warn("保存答案到数据库失败: {}", e.getMessage());
         }
 
-        log.info("会话 {} 提交答案: 问题{}, 剩余{}题",
-            request.sessionId(), index, questions.size() - newIndex);
+        log.info("会话 {} 提交答案: 问题{}, 已完成{}题/{}题",
+            request.sessionId(), index,
+            questions.stream().filter(q -> q.userAnswer() != null && !q.userAnswer().isBlank()).count(),
+            questions.size());
 
         return new SubmitAnswerResponse(
             hasNextQuestion,
             nextQuestion,
-            newIndex,
+            persistedCurrentIndex,
             questions.size()
         );
     }
@@ -412,6 +414,7 @@ public class InterviewSessionService {
      * 获取或恢复会话（优先从缓存获取）
      */
     private CachedSession getOrRestoreSession(String sessionId) {
+        persistenceService.requireSessionOwnedByUser(sessionId, SecurityUtils.requireUserId());
         // 1. 尝试从 Redis 缓存获取
         Optional<CachedSession> cachedOpt = sessionCache.getSession(sessionId);
         if (cachedOpt.isPresent()) {

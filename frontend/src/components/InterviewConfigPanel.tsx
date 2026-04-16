@@ -15,9 +15,6 @@ interface InterviewConfigPanelProps {
   error?: string;
 }
 
-/**
- * 面试配置面板组件
- */
 export default function InterviewConfigPanel({
   questionCount,
   onQuestionCountChange,
@@ -34,175 +31,135 @@ export default function InterviewConfigPanel({
   const questionCounts = [6, 8, 10, 12, 15];
 
   return (
-      <motion.div
-      className="max-w-2xl mx-auto"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-    >
-          <div
-              className="bg-white dark:bg-slate-800 rounded-2xl p-8 shadow-sm dark:shadow-slate-900/50 border border-slate-100 dark:border-slate-700">
-              <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-3">
-                  <div
-                      className="w-10 h-10 bg-primary-100 dark:bg-primary-900/50 rounded-xl flex items-center justify-center">
-                      <svg className="w-5 h-5 text-primary-600 dark:text-primary-400" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
-              <circle cx="12" cy="12" r="6" stroke="currentColor" strokeWidth="2"/>
-              <circle cx="12" cy="12" r="2" fill="currentColor"/>
-            </svg>
-          </div>
-          面试配置
-        </h2>
+    <div className="mx-auto w-full max-w-2xl px-6 py-10 text-white sm:px-10 sm:py-12">
+      <motion.div initial={{opacity: 0, y: 12}} animate={{opacity: 1, y: 0}} transition={{duration: 0.25}}>
+        <header className="mb-10">
+          <h1 className="text-[28px] font-black tracking-tight text-ds-fg dark:text-neutral-50">开始一场模拟面试</h1>
+          <p className="mt-2 max-w-prose text-[15px] leading-relaxed text-ds-fg-muted dark:text-neutral-400">
+            选择题目数量后，系统会基于你的简历生成结构化问答。界面采用「文档式」阅读体验，便于长时间作答。
+          </p>
+        </header>
 
-        {/* 未完成面试提示 */}
         <AnimatePresence>
           {checkingUnfinished && (
             <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-xl text-blue-700 dark:text-blue-400 text-sm text-center"
+              initial={{opacity: 0, y: -8}}
+              animate={{opacity: 1, y: 0}}
+              exit={{opacity: 0, y: -8}}
+              className="mb-8 rounded-[24px] border border-white/12 bg-white/[0.06] px-4 py-4 text-center text-[13px] text-white/68 shadow-[0_18px_42px_rgba(2,6,23,0.32)] backdrop-blur-[18px]"
             >
-              <div className="flex items-center justify-center gap-2">
-                  <motion.div
-                  className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full"
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                />
-                正在检查是否有未完成的面试...
-              </div>
+              正在检查是否有未完成的面试…
             </motion.div>
           )}
 
           {unfinishedSession && !checkingUnfinished && (
             <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="mb-6 p-5 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/30 dark:to-orange-900/30 border-2 border-amber-200 dark:border-amber-800 rounded-xl"
+              initial={{opacity: 0, y: -8}}
+              animate={{opacity: 1, y: 0}}
+              exit={{opacity: 0, y: -8}}
+              className="mb-8 rounded-[24px] border border-white/12 bg-white/[0.06] px-5 py-5 shadow-[0_18px_42px_rgba(2,6,23,0.32)] backdrop-blur-[18px]"
             >
-              <div className="flex items-start gap-3 mb-4">
-                  <div
-                      className="w-8 h-8 bg-amber-100 dark:bg-amber-900/50 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <svg className="w-5 h-5 text-amber-600 dark:text-amber-400" viewBox="0 0 24 24" fill="none">
-                    <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M2 17L12 22L22 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M2 12L12 17L22 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </div>
-                <div className="flex-1">
-                    <h3 className="font-semibold text-amber-900 dark:text-amber-300 mb-1">检测到未完成的模拟面试</h3>
-                    <p className="text-sm text-amber-700 dark:text-amber-400">
-                    已完成 {unfinishedSession.currentQuestionIndex} / {unfinishedSession.totalQuestions} 题
-                  </p>
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <motion.button
+              <p className="text-[15px] font-bold text-white">检测到未完成的模拟面试</p>
+              <p className="mt-1 text-[13px] text-white/62">
+                已完成 {unfinishedSession.currentQuestionIndex} / {unfinishedSession.totalQuestions} 题
+              </p>
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
                   onClick={onContinueUnfinished}
-                  className="flex-1 px-4 py-2.5 bg-amber-500 text-white rounded-lg font-medium hover:bg-amber-600 transition-colors"
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
+                  className="inline-flex flex-1 items-center justify-center rounded-pill border border-white/12 bg-white px-5 py-3 text-[14px] font-bold text-slate-950 transition hover:bg-white/92"
                 >
                   继续完成
-                </motion.button>
-                <motion.button
+                </button>
+                <button
+                  type="button"
                   onClick={onStartNew}
-                  className="flex-1 px-4 py-2.5 bg-white dark:bg-slate-700 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 rounded-lg font-medium hover:bg-amber-50 dark:hover:bg-amber-900/30 transition-colors"
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
+                  className="inline-flex flex-1 items-center justify-center rounded-pill border border-white/12 bg-black/20 px-5 py-3 text-[14px] font-bold text-white transition hover:bg-black/28"
                 >
                   开始新的
-                </motion.button>
+                </button>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
 
-        <div className="space-y-6">
+        <section className="space-y-10">
           <div>
-              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">
-              题目数量
-            </label>
-            <div className="grid grid-cols-5 gap-3">
-              {questionCounts.map((count) => (
-                <motion.button
-                  key={count}
-                  onClick={() => onQuestionCountChange(count)}
-                  className={`px-4 py-3 rounded-xl font-medium transition-all ${
-                    questionCount === count
-                      ? 'bg-primary-500 text-white shadow-lg shadow-primary-500/30'
-                        : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
-                  }`}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  {count}
-                </motion.button>
-              ))}
+            <p className="mb-3 text-[12px] font-bold uppercase tracking-wide text-ds-fg-muted dark:text-neutral-500">题目数量</p>
+            <div className="flex flex-wrap gap-2">
+              {questionCounts.map(count => {
+                const active = questionCount === count;
+                return (
+                  <button
+                    key={count}
+                    type="button"
+                    onClick={() => onQuestionCountChange(count)}
+                    className={`min-w-[3.25rem] rounded-pill px-4 py-2.5 text-[14px] font-bold transition ${
+                      active
+                        ? 'bg-white text-slate-950 shadow-[0_12px_24px_rgba(255,255,255,0.16)]'
+                        : 'border border-white/12 bg-black/18 text-white/68 hover:bg-black/26'
+                    }`}
+                  >
+                    {count}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          <div className="mb-6">
-              <label
-                  className="block text-sm font-semibold text-slate-600 dark:text-slate-400 mb-3">简历预览（前500字）</label>
-              <textarea
-              value={resumeText.substring(0, 500) + (resumeText.length > 500 ? '...' : '')}
-              readOnly
-              className="w-full h-32 p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-600 dark:text-slate-400 text-sm resize-none"
-            />
+          <div>
+            <p className="mb-3 text-[12px] font-bold uppercase tracking-wide text-ds-fg-muted dark:text-neutral-500">简历预览（前 500 字）</p>
+            <div className="rounded-[24px] border border-white/12 bg-white/[0.06] p-4 shadow-[0_18px_42px_rgba(2,6,23,0.32)] backdrop-blur-[18px]">
+              <p className="max-h-40 overflow-auto whitespace-pre-wrap break-words text-[13px] leading-relaxed text-white/68">
+                {resumeText.substring(0, 500)}
+                {resumeText.length > 500 ? '…' : ''}
+              </p>
+            </div>
           </div>
 
-            <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+          <p className="text-[13px] leading-relaxed text-ds-fg-muted dark:text-neutral-400">
             题目分布：项目经历(20%) + MySQL(20%) + Redis(20%) + Java基础/集合/并发(30%) + Spring(10%)
           </p>
 
           <AnimatePresence>
-            {error && (
+            {error ? (
               <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="mb-6 p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-sm"
+                initial={{opacity: 0, y: -8}}
+                animate={{opacity: 1, y: 0}}
+                exit={{opacity: 0, y: -8}}
+                className="rounded-[22px] border border-amber-300/20 bg-amber-400/10 px-4 py-3 text-[13px] text-amber-100 shadow-[0_12px_28px_rgba(245,158,11,0.08)]"
               >
-                ⚠️ {error}
+                {error}
               </motion.div>
-            )}
+            ) : null}
           </AnimatePresence>
 
-            <div className="flex justify-center gap-4">
-                <motion.button
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <button
+              type="button"
               onClick={onBack}
-              className="px-6 py-3 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-all"
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
+              className="inline-flex items-center justify-center rounded-pill border border-white/12 bg-black/20 px-6 py-3 text-[14px] font-bold text-white transition hover:bg-black/28"
             >
-              ← 返回
-            </motion.button>
-            <motion.button
+              返回
+            </button>
+            <button
+              type="button"
               onClick={onStart}
               disabled={isCreating}
-              className="px-8 py-3 bg-gradient-to-r from-primary-500 to-primary-600 text-white rounded-xl font-semibold shadow-lg shadow-primary-500/30 hover:shadow-xl transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
-              whileHover={{ scale: isCreating ? 1 : 1.02, y: isCreating ? 0 : -1 }}
-              whileTap={{ scale: isCreating ? 1 : 0.98 }}
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-pill border border-white/12 bg-white px-8 py-3 text-[14px] font-black text-slate-950 transition hover:bg-white/92 disabled:cursor-not-allowed disabled:opacity-45 sm:flex-none"
             >
               {isCreating ? (
                 <>
-                    <motion.span
-                    className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full"
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                  />
-                  正在生成题目...
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-ds-bg/30 border-t-ds-bg dark:border-neutral-950/30 dark:border-t-neutral-950" />
+                  正在生成题目…
                 </>
               ) : (
-                <>
-                  开始面试 →
-                </>
+                <>开始面试</>
               )}
-            </motion.button>
+            </button>
           </div>
-        </div>
-      </div>
-    </motion.div>
+        </section>
+      </motion.div>
+    </div>
   );
 }

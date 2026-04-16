@@ -2,12 +2,16 @@ package interview.guide.modules.resume.service;
 
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
+import interview.guide.infrastructure.security.SecurityUtils;
 import interview.guide.infrastructure.file.FileStorageService;
 import interview.guide.modules.interview.service.InterviewPersistenceService;
 import interview.guide.modules.resume.model.ResumeEntity;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+
+import java.util.List;
+import java.util.Objects;
 
 /**
  * 简历删除服务
@@ -30,26 +34,36 @@ public class ResumeDeleteService {
      */
     public void deleteResume(Long id) {
         log.info("收到删除简历请求: id={}", id);
-        
+        long userId = SecurityUtils.requireUserId();
+
         // 获取简历信息（用于删除存储文件）
-        ResumeEntity resume = persistenceService.findById(id)
-            .orElseThrow(() -> new BusinessException(
-                ErrorCode.RESUME_NOT_FOUND));
-        
+        ResumeEntity resume = persistenceService.requireResumeOwned(id, userId);
+
         // 1. 删除存储的文件（FileStorageService 已内置存在性检查）
         try {
             storageService.deleteResume(resume.getStorageKey());
         } catch (Exception e) {
             log.warn("删除存储文件失败，继续删除数据库记录: {}", e.getMessage());
         }
-        
+
         // 2. 删除面试会话（会自动删除面试答案）
         interviewPersistenceService.deleteSessionsByResumeId(id);
-        
+
         // 3. 删除数据库记录（包括分析记录）
         persistenceService.deleteResume(id);
-        
+
         log.info("简历删除完成: id={}", id);
+    }
+
+    public void deleteResumes(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return;
+        }
+
+        ids.stream()
+            .filter(Objects::nonNull)
+            .distinct()
+            .forEach(this::deleteResume);
     }
 }
 

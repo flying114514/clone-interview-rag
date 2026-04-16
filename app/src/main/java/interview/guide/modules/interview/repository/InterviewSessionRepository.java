@@ -27,6 +27,15 @@ public interface InterviewSessionRepository extends JpaRepository<InterviewSessi
      */
     @Query("SELECT s FROM InterviewSessionEntity s JOIN FETCH s.resume WHERE s.sessionId = :sessionId")
     Optional<InterviewSessionEntity> findBySessionIdWithResume(@Param("sessionId") String sessionId);
+
+    /**
+     * 根据会话ID查找，且简历必须属于指定用户
+     */
+    @Query("SELECT s FROM InterviewSessionEntity s JOIN FETCH s.resume r WHERE s.sessionId = :sessionId AND r.ownerUserId = :userId")
+    Optional<InterviewSessionEntity> findBySessionIdAndResumeOwnerUserId(
+        @Param("sessionId") String sessionId,
+        @Param("userId") Long userId
+    );
     
     /**
      * 根据简历查找所有面试记录

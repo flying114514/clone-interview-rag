@@ -1,9 +1,9 @@
 package interview.guide.modules.resume.service;
 
-import interview.guide.common.config.AppConfigProperties;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.common.model.AsyncTaskStatus;
+import interview.guide.infrastructure.security.SecurityUtils;
 import interview.guide.infrastructure.file.FileStorageService;
 import interview.guide.infrastructure.file.FileValidationService;
 import interview.guide.modules.interview.model.ResumeAnalysisResponse;
@@ -31,7 +31,6 @@ public class ResumeUploadService {
     private final ResumeParseService parseService;
     private final FileStorageService storageService;
     private final ResumePersistenceService persistenceService;
-    private final AppConfigProperties appConfig;
     private final FileValidationService fileValidationService;
     private final AnalyzeStreamProducer analyzeStreamProducer;
     private final ResumeRepository resumeRepository;
@@ -45,6 +44,7 @@ public class ResumeUploadService {
      * @return 上传结果（分析将异步进行）
      */
     public Map<String, Object> uploadAndAnalyze(org.springframework.web.multipart.MultipartFile file) {
+        long userId = SecurityUtils.requireUserId();
         // 1. 验证文件
         fileValidationService.validateFile(file, MAX_FILE_SIZE, "简历");
 
@@ -53,10 +53,10 @@ public class ResumeUploadService {
 
         // 2. 验证文件类型
         String contentType = parseService.detectContentType(file);
-        validateContentType(contentType);
+        validateContentType(contentType, fileName);
 
         // 3. 检查简历是否已存在（去重）
-        Optional<ResumeEntity> existingResume = persistenceService.findExistingResume(file);
+        Optional<ResumeEntity> existingResume = persistenceService.findExistingResume(file, userId);
         if (existingResume.isPresent()) {
             return handleDuplicateResume(existingResume.get());
         }
@@ -73,7 +73,7 @@ public class ResumeUploadService {
         log.info("简历已存储到RustFS: {}", fileKey);
 
         // 6. 保存简历到数据库（状态为 PENDING）
-        ResumeEntity savedResume = persistenceService.saveResume(file, resumeText, fileKey, fileUrl);
+        ResumeEntity savedResume = persistenceService.saveResume(file, resumeText, fileKey, fileUrl, userId);
 
         // 7. 发送分析任务到 Redis Stream（异步处理）
         analyzeStreamProducer.sendAnalyzeTask(savedResume.getId(), resumeText);
@@ -99,11 +99,13 @@ public class ResumeUploadService {
     /**
      * 验证文件类型
      */
-    private void validateContentType(String contentType) {
-        fileValidationService.validateContentTypeByList(
+    private void validateContentType(String contentType, String fileName) {
+        fileValidationService.validateContentType(
             contentType,
-            appConfig.getAllowedTypes(),
-            "不支持的文件类型: " + contentType
+            fileName,
+            fileValidationService::isResumeMimeType,
+            fileValidationService::isResumeExtension,
+            "不支持的文件类型: " + contentType + "，支持的类型：PDF、DOCX、DOC、TXT"
         );
     }
 
@@ -149,7 +151,8 @@ public class ResumeUploadService {
      */
     @Transactional
     public void reanalyze(Long resumeId) {
-        ResumeEntity resume = resumeRepository.findById(resumeId)
+        long userId = SecurityUtils.requireUserId();
+        ResumeEntity resume = resumeRepository.findByIdAndOwnerUserId(resumeId, userId)
             .orElseThrow(() -> new BusinessException(ErrorCode.RESUME_NOT_FOUND, "简历不存在"));
 
         log.info("开始重新分析简历: resumeId={}, filename={}", resumeId, resume.getOriginalFilename());

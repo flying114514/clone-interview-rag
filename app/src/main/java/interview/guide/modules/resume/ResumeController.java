@@ -2,8 +2,11 @@ package interview.guide.modules.resume;
 
 import interview.guide.common.annotation.RateLimit;
 import interview.guide.common.result.Result;
+import interview.guide.modules.resume.model.ResumeAiGenerateRequest;
+import interview.guide.modules.resume.model.ResumeAiGenerateResponse;
 import interview.guide.modules.resume.model.ResumeDetailDTO;
 import interview.guide.modules.resume.model.ResumeListItemDTO;
+import interview.guide.modules.resume.service.ResumeAiGenerateService;
 import interview.guide.modules.resume.service.ResumeDeleteService;
 import interview.guide.modules.resume.service.ResumeHistoryService;
 import interview.guide.modules.resume.service.ResumeUploadService;
@@ -34,6 +37,7 @@ public class ResumeController {
     private final ResumeUploadService uploadService;
     private final ResumeDeleteService deleteService;
     private final ResumeHistoryService historyService;
+    private final ResumeAiGenerateService resumeAiGenerateService;
 
     /**
      * 上传简历并获取分析结果
@@ -51,6 +55,16 @@ public class ResumeController {
             return Result.success("检测到相同简历，已返回历史分析结果", result);
         }
         return Result.success(result);
+    }
+
+    /**
+     * AI 生成简历初稿
+     */
+    @PostMapping("/api/resumes/ai-generate")
+    @RateLimit(dimension = RateLimit.Dimension.GLOBAL, count = 3)
+    @RateLimit(dimension = RateLimit.Dimension.IP, count = 3)
+    public Result<ResumeAiGenerateResponse> generateResumeByAi(@RequestBody ResumeAiGenerateRequest request) {
+        return Result.success(resumeAiGenerateService.generate(request));
     }
 
     /**

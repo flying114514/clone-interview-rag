@@ -28,12 +28,13 @@ spring:
   datasource:
     url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:interview_guide}
     username: ${POSTGRES_USER:postgres}
+    # docker-compose.dev.yml 默认为 123456；根目录 docker-compose.yml 中 postgres 为 password，请用环境变量 POSTGRES_PASSWORD 与当前数据库一致
     password: ${POSTGRES_PASSWORD:123456}
     driver-class-name: org.postgresql.Driver
 
   jpa:
     hibernate:
-      ddl-auto: create #首次启动用 create，表创建成功后，改回 update
+      ddl-auto: update #首次启动用 create，表创建成功后，改回 update
     show-sql: false
     properties:
       hibernate:
@@ -87,6 +88,10 @@ spring:
 
 # Application custom configuration
 app:
+  jwt:
+    # HS256 密钥长度建议 ≥ 256 bit；生产环境务必通过环境变量覆盖
+    secret: ${JWT_SECRET:dev-jwt-secret-change-me-in-production-32chars-min!!}
+    expiration-ms: ${JWT_EXPIRATION_MS:604800000}
   ai:
     # 结构化输出重试次数（用于 BeanOutputConverter 解析失败时的业务层重试）
     structured-max-attempts: ${APP_AI_STRUCTURED_MAX_ATTEMPTS:2}
@@ -114,11 +119,11 @@ app:
       - application/vnd.openxmlformats-officedocument.wordprocessingml.document
       - text/plain
 
-  # RustFS (S3兼容) 存储配置
+  # RustFS（S3 兼容）对象存储：本地开发见 docker-compose.dev.yml；元数据在 PostgreSQL，对象在存储桶
   storage:
     endpoint: ${APP_STORAGE_ENDPOINT:http://localhost:9000}
-    access-key: ${APP_STORAGE_ACCESS_KEY:wr45VXJZhCxc6FAWz0YR}
-    secret-key: ${APP_STORAGE_SECRET_KEY:GtKxV57WJkpw4CvASPBzTy2DYElLnRqh8dIXQa0m}
+    access-key: ${APP_STORAGE_ACCESS_KEY:hxQyeWTlFlOA0C742F0O}
+    secret-key: ${APP_STORAGE_SECRET_KEY:tGHkUWE9wRHYbgsmB21itHfJNRT466CSriyXx50p}
     bucket: ${APP_STORAGE_BUCKET:interview-guide}
     region: ${APP_STORAGE_REGION:us-east-1}
   

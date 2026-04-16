@@ -1,4 +1,5 @@
 import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
+import { AUTH_TOKEN_KEY, clearAuthSession } from '../authStorage';
 
 /**
  * 后端统一响应结构
@@ -16,6 +17,14 @@ const instance: AxiosInstance = axios.create({
   timeout: 60000,
 });
 
+instance.interceptors.request.use((config) => {
+  const token = localStorage.getItem(AUTH_TOKEN_KEY);
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 /**
  * 响应拦截器
  * 
@@ -29,6 +38,12 @@ instance.interceptors.response.use(
     
     // 检查是否是 Result 格式
     if (result && typeof result === 'object' && 'code' in result) {
+      if (result.code === 401) {
+        clearAuthSession();
+        if (!window.location.pathname.startsWith('/login')) {
+          window.location.assign('/login');
+        }
+      }
       if (result.code === 200) {
         // 成功：返回 data
         response.data = result.data;

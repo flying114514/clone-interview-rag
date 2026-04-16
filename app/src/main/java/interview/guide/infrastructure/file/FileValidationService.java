@@ -107,13 +107,43 @@ public class FileValidationService {
     }
     
     /**
+     * 检查MIME类型是否为简历支持的格式
+     */
+    public boolean isResumeMimeType(String contentType) {
+        if (contentType == null) {
+            return false;
+        }
+
+        String lowerContentType = contentType.toLowerCase();
+        return lowerContentType.contains("pdf") ||
+               lowerContentType.contains("msword") ||
+               lowerContentType.contains("wordprocessingml") ||
+               lowerContentType.contains("text/plain");
+    }
+
+    /**
+     * 检查文件扩展名是否为简历支持的格式
+     */
+    public boolean isResumeExtension(String fileName) {
+        if (fileName == null) {
+            return false;
+        }
+
+        String lowerFileName = fileName.toLowerCase();
+        return lowerFileName.endsWith(".pdf") ||
+               lowerFileName.endsWith(".doc") ||
+               lowerFileName.endsWith(".docx") ||
+               lowerFileName.endsWith(".txt");
+    }
+
+    /**
      * 检查MIME类型是否为知识库支持的格式
      */
     public boolean isKnowledgeBaseMimeType(String contentType) {
         if (contentType == null) {
             return false;
         }
-        
+
         String lowerContentType = contentType.toLowerCase();
         return lowerContentType.contains("pdf") ||
                lowerContentType.contains("msword") ||

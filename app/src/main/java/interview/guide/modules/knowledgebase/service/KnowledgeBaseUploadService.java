@@ -2,6 +2,7 @@ package interview.guide.modules.knowledgebase.service;
 
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
+import interview.guide.infrastructure.security.SecurityUtils;
 import interview.guide.infrastructure.file.FileHashService;
 import interview.guide.infrastructure.file.FileStorageService;
 import interview.guide.infrastructure.file.FileValidationService;
@@ -46,6 +47,7 @@ public class KnowledgeBaseUploadService {
      * @return 上传结果和存储信息（包含duplicate字段，表示是否为重复上传）
      */
     public Map<String, Object> uploadKnowledgeBase(MultipartFile file, String name, String category) {
+        long userId = SecurityUtils.requireUserId();
         // 1. 验证文件
         fileValidationService.validateFile(file, MAX_FILE_SIZE, "知识库");
 
@@ -58,7 +60,7 @@ public class KnowledgeBaseUploadService {
 
         // 3. 检查知识库是否已存在（去重）
         String fileHash = fileHashService.calculateHash(file);
-        Optional<KnowledgeBaseEntity> existingKb = knowledgeBaseRepository.findByFileHash(fileHash);
+        Optional<KnowledgeBaseEntity> existingKb = knowledgeBaseRepository.findByOwnerUserIdAndFileHash(userId, fileHash);
         if (existingKb.isPresent()) {
             log.info("检测到重复知识库: hash={}", fileHash);
             return persistenceService.handleDuplicateKnowledgeBase(existingKb.get(), fileHash);
@@ -76,7 +78,7 @@ public class KnowledgeBaseUploadService {
         log.info("知识库已存储到RustFS: {}", fileKey);
 
         // 6. 保存知识库元数据到数据库（状态为 PENDING）
-        KnowledgeBaseEntity savedKb = persistenceService.saveKnowledgeBase(file, name, category, fileKey, fileUrl, fileHash);
+        KnowledgeBaseEntity savedKb = persistenceService.saveKnowledgeBase(file, name, category, fileKey, fileUrl, fileHash, userId);
 
         // 7. 发送向量化任务到 Redis Stream（异步处理）
         vectorizeStreamProducer.sendVectorizeTask(savedKb.getId(), content);
@@ -121,7 +123,8 @@ public class KnowledgeBaseUploadService {
      * @param kbId 知识库ID
      */
     public void revectorize(Long kbId) {
-        KnowledgeBaseEntity kb = knowledgeBaseRepository.findById(kbId)
+        long userId = SecurityUtils.requireUserId();
+        KnowledgeBaseEntity kb = knowledgeBaseRepository.findByIdAndOwnerUserId(kbId, userId)
             .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "知识库不存在"));
 
         log.info("开始重新向量化知识库: kbId={}, name={}", kbId, kb.getName());

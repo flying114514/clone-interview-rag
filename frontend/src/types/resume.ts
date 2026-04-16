@@ -24,22 +24,83 @@ export interface UploadResponse {
 }
 
 export interface ScoreDetail {
-  contentScore: number;      // 内容完整性 (0-25)
-  structureScore: number;    // 结构清晰度 (0-20)
-  skillMatchScore: number;   // 技能匹配度 (0-25)
-  expressionScore: number;   // 表达专业性 (0-15)
-  projectScore: number;      // 项目经验 (0-15)
+  contentScore: number;
+  structureScore: number;
+  skillMatchScore: number;
+  expressionScore: number;
+  projectScore: number;
 }
 
 export interface Suggestion {
-  category: string;         // 建议类别
+  category: string;
   priority: '高' | '中' | '低';
-  issue: string;            // 问题描述
-  recommendation: string;   // 具体建议
+  issue: string;
+  recommendation: string;
 }
 
 export interface ApiError {
   error: string;
   detectedType?: string;
   allowedTypes?: string[];
+}
+
+export interface ResumeAiGenerateRequest {
+  templateId: string;
+  identity: string;
+  major: string;
+  educationInfo: string;
+  jobTargets: string[];
+  educationTags: string[];
+  internshipTags: string[];
+  certificateTags: string[];
+  additionalNotes: string;
+  historicalContext?: {
+    wizardDraft?: {
+      identity: string;
+      major: string;
+      educationInfo: string;
+      jobTargets: string[];
+      educationTags: string[];
+      internshipTags: string[];
+      certificateTags: string[];
+      additionalNotes: string;
+    };
+    builderDrafts: Array<{
+      templateId: string;
+      updatedAt: string;
+      sections: Record<string, string>;
+      aiMeta?: {
+        identity?: string;
+        major?: string;
+        educationInfo?: string;
+        jobTargets?: string[];
+        educationTags?: string[];
+        internshipTags?: string[];
+        certificateTags?: string[];
+        additionalNotes?: string;
+      };
+    }>;
+  };
+}
+
+export interface ResumeAiGenerateResponse {
+  templateId: string;
+  aiMeta: {
+    identity: string;
+    major: string;
+    educationInfo: string;
+    jobTargets: string[];
+    educationTags: string[];
+    internshipTags: string[];
+    certificateTags: string[];
+    additionalNotes: string;
+  };
+  sections: {
+    profile: string;
+    summary: string;
+    education: string;
+    projects: string;
+    experience: string;
+    skills: string;
+  };
 }

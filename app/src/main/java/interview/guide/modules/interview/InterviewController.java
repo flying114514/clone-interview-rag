@@ -2,9 +2,11 @@ package interview.guide.modules.interview;
 
 import interview.guide.common.annotation.RateLimit;
 import interview.guide.common.result.Result;
+import interview.guide.infrastructure.security.SecurityUtils;
 import interview.guide.modules.interview.model.*;
 import interview.guide.modules.interview.service.InterviewHistoryService;
 import interview.guide.modules.interview.service.InterviewPersistenceService;
+import interview.guide.modules.interview.service.InterviewQuestionCollectionService;
 import interview.guide.modules.interview.service.InterviewSessionService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +33,7 @@ public class InterviewController {
     private final InterviewSessionService sessionService;
     private final InterviewHistoryService historyService;
     private final InterviewPersistenceService persistenceService;
+    private final InterviewQuestionCollectionService collectionService;
     
     /**
      * 创建面试会话
@@ -122,6 +125,28 @@ public class InterviewController {
     }
     
     /**
+     * 收藏当前面试题到知识库
+     */
+    @PostMapping("/api/interview/sessions/{sessionId}/collect")
+    public Result<CollectInterviewQuestionResponse> collectInterviewQuestion(
+            @PathVariable String sessionId,
+            @RequestBody CollectInterviewQuestionRequest request) {
+        log.info("收藏面试题: sessionId={}, questionIndex={}", sessionId, request.questionIndex());
+        return Result.success(collectionService.collectQuestion(sessionId, request.questionIndex()));
+    }
+
+    /**
+     * 取消收藏当前面试题
+     */
+    @DeleteMapping("/api/interview/sessions/{sessionId}/collect")
+    public Result<CollectInterviewQuestionResponse> uncollectInterviewQuestion(
+            @PathVariable String sessionId,
+            @RequestParam("questionIndex") Integer questionIndex) {
+        log.info("取消收藏面试题: sessionId={}, questionIndex={}", sessionId, questionIndex);
+        return Result.success(collectionService.uncollectQuestion(sessionId, questionIndex));
+    }
+
+    /**
      * 获取面试会话详情
      * GET /api/interview/sessions/{sessionId}/details
      */
@@ -157,7 +182,7 @@ public class InterviewController {
     @DeleteMapping("/api/interview/sessions/{sessionId}")
     public Result<Void> deleteInterview(@PathVariable String sessionId) {
         log.info("删除面试会话: {}", sessionId);
-        persistenceService.deleteSessionBySessionId(sessionId);
+        persistenceService.deleteSessionBySessionIdForUser(sessionId, SecurityUtils.requireUserId());
         return Result.success(null);
     }
 }

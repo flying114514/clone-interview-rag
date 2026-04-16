@@ -5,6 +5,7 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
+import interview.guide.infrastructure.security.SecurityUtils;
 import interview.guide.infrastructure.export.PdfExportService;
 import interview.guide.infrastructure.mapper.InterviewMapper;
 import interview.guide.modules.interview.model.InterviewAnswerEntity;
@@ -16,7 +17,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.Optional;
 
 /**
  * 面试历史服务
@@ -36,12 +36,10 @@ public class InterviewHistoryService {
      * 获取面试会话详情
      */
     public InterviewDetailDTO getInterviewDetail(String sessionId) {
-        Optional<InterviewSessionEntity> sessionOpt = interviewPersistenceService.findBySessionId(sessionId);
-        if (sessionOpt.isEmpty()) {
-            throw new BusinessException(ErrorCode.INTERVIEW_SESSION_NOT_FOUND);
-        }
-
-        InterviewSessionEntity session = sessionOpt.get();
+        long userId = SecurityUtils.requireUserId();
+        InterviewSessionEntity session = interviewPersistenceService
+            .findBySessionIdAndResumeOwnerUserId(sessionId, userId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.INTERVIEW_SESSION_NOT_FOUND));
 
         // 解析JSON字段
         List<Object> questions = parseJson(session.getQuestionsJson(), new TypeReference<>() {});
@@ -145,12 +143,10 @@ public class InterviewHistoryService {
      * 导出面试报告为PDF
      */
     public byte[] exportInterviewPdf(String sessionId) {
-        Optional<InterviewSessionEntity> sessionOpt = interviewPersistenceService.findBySessionId(sessionId);
-        if (sessionOpt.isEmpty()) {
-            throw new BusinessException(ErrorCode.INTERVIEW_SESSION_NOT_FOUND);
-        }
-
-        InterviewSessionEntity session = sessionOpt.get();
+        long userId = SecurityUtils.requireUserId();
+        InterviewSessionEntity session = interviewPersistenceService
+            .findBySessionIdAndResumeOwnerUserId(sessionId, userId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.INTERVIEW_SESSION_NOT_FOUND));
         try {
             return pdfExportService.exportInterviewReport(session);
         } catch (Exception e) {

@@ -6,6 +6,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -24,9 +25,17 @@ import java.util.Set;
 @NoArgsConstructor
 public class RagChatSessionEntity {
 
+    private static final ZoneId BEIJING_ZONE_ID = ZoneId.of("Asia/Shanghai");
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    /**
+     * 所属用户（users.id）
+     */
+    @Column(name = "owner_user_id")
+    private Long ownerUserId;
 
     /**
      * 会话标题（可自动生成或用户自定义）
@@ -88,13 +97,13 @@ public class RagChatSessionEntity {
 
     @PrePersist
     protected void onCreate() {
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
+        createdAt = LocalDateTime.now(BEIJING_ZONE_ID);
+        updatedAt = LocalDateTime.now(BEIJING_ZONE_ID);
     }
 
     @PreUpdate
     protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now(BEIJING_ZONE_ID);
     }
 
     @PostLoad
@@ -112,7 +121,7 @@ public class RagChatSessionEntity {
         messages.add(message);
         message.setSession(this);
         messageCount = messages.size();
-        updatedAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now(BEIJING_ZONE_ID);
     }
 
     /**

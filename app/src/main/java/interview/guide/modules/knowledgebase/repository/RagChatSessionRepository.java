@@ -50,4 +50,15 @@ public interface RagChatSessionRepository extends JpaRepository<RagChatSessionEn
      */
     @Query("SELECT s FROM RagChatSessionEntity s LEFT JOIN FETCH s.knowledgeBases WHERE s.id = :id")
     Optional<RagChatSessionEntity> findByIdWithKnowledgeBases(@Param("id") Long id);
+
+    @Query("SELECT s FROM RagChatSessionEntity s WHERE s.ownerUserId = :uid ORDER BY s.isPinned DESC, s.updatedAt DESC")
+    List<RagChatSessionEntity> findByOwnerUserIdOrderByPinnedAndUpdatedAtDesc(@Param("uid") Long ownerUserId);
+
+    Optional<RagChatSessionEntity> findByIdAndOwnerUserId(Long id, Long ownerUserId);
+
+    @Query("SELECT DISTINCT s FROM RagChatSessionEntity s JOIN s.knowledgeBases kb WHERE kb.id IN :kbIds AND s.ownerUserId = :uid ORDER BY s.updatedAt DESC")
+    List<RagChatSessionEntity> findByKnowledgeBaseIdsAndOwnerUserId(@Param("kbIds") List<Long> kbIds, @Param("uid") Long ownerUserId);
+
+    @Query("SELECT DISTINCT s FROM RagChatSessionEntity s LEFT JOIN FETCH s.knowledgeBases WHERE s.id = :id AND s.ownerUserId = :uid")
+    Optional<RagChatSessionEntity> findByIdAndOwnerUserIdWithKnowledgeBases(@Param("id") Long id, @Param("uid") Long ownerUserId);
 }

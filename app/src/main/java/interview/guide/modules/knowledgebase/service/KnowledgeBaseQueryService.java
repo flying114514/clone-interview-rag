@@ -35,6 +35,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Service
 public class KnowledgeBaseQueryService {
     private static final String NO_RESULT_RESPONSE = "抱歉，在选定的知识库中未检索到相关信息。请换一个更具体的关键词或补充上下文后再试。";
+    private static final String GENERAL_SYSTEM_PROMPT = "你是专业问答助手。用户问题与已选知识库不强相关时，也要直接给出专业、准确、结构化的中文回答；不需要声明知识库不足。";
     private static final Pattern SHORT_TOKEN_PATTERN = Pattern.compile("^[\\p{L}\\p{N}_-]{2,20}$");
     // 中文疑问前缀："什么是X" / "如何X" → 提取 X
     private static final Pattern ZH_QUESTION_PREFIX = Pattern.compile(
@@ -121,8 +122,9 @@ public class KnowledgeBaseQueryService {
         QueryContext queryContext = buildQueryContext(question);
         List<Document> relevantDocs = retrieveRelevantDocs(queryContext, knowledgeBaseIds);
 
+        // 未命中知识库时，降级为通用专业问答（更全能）
         if (!hasEffectiveHit(question, relevantDocs)) {
-            return NO_RESULT_RESPONSE;
+            return answerGeneralQuestion(question);
         }
 
         // 3. 构建上下文（合并检索到的文档）
@@ -208,8 +210,13 @@ public class KnowledgeBaseQueryService {
             QueryContext queryContext = buildQueryContext(question);
             List<Document> relevantDocs = retrieveRelevantDocs(queryContext, knowledgeBaseIds);
 
+            // 未命中知识库时，降级为通用专业问答（流式）
             if (!hasEffectiveHit(question, relevantDocs)) {
-                return Flux.just(NO_RESULT_RESPONSE);
+                return answerGeneralQuestionStream(question)
+                    .onErrorResume(e -> {
+                        log.error("通用问答流式输出失败: kbIds={}, error={}", knowledgeBaseIds, e.getMessage(), e);
+                        return Flux.just("【错误】问答失败：AI服务暂时不可用，请稍后重试。");
+                    });
             }
 
             // 3. 构建上下文
@@ -382,6 +389,29 @@ public class KnowledgeBaseQueryService {
             return NO_RESULT_RESPONSE;
         }
         return normalized;
+    }
+
+
+    private String answerGeneralQuestion(String question) {
+        try {
+            String answer = chatClient.prompt()
+                .system(GENERAL_SYSTEM_PROMPT)
+                .user(question)
+                .call()
+                .content();
+            return answer == null || answer.isBlank() ? "抱歉，我暂时无法回答这个问题，请稍后重试。" : answer.trim();
+        } catch (Exception e) {
+            log.error("通用问答失败: {}", e.getMessage(), e);
+            throw new BusinessException(ErrorCode.KNOWLEDGE_BASE_QUERY_FAILED, "问答失败：" + e.getMessage());
+        }
+    }
+
+    private Flux<String> answerGeneralQuestionStream(String question) {
+        return chatClient.prompt()
+            .system(GENERAL_SYSTEM_PROMPT)
+            .user(question)
+            .stream()
+            .content();
     }
 
     private boolean isNoResultLike(String text) {
