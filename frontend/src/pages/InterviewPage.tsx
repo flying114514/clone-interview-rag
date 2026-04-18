@@ -4,7 +4,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import InterviewConfigPanel from '../components/InterviewConfigPanel';
 import ChatArea from '../components/interview/ChatArea';
 import Sidebar from '../components/interview/Sidebar';
-import type {InterviewQuestion, InterviewSession} from '../types/interview';
+import type {InterviewCreationTaskStatus, InterviewQuestion, InterviewSession} from '../types/interview';
 import type {InterviewChatMessage} from '../types/interviewChat';
 
 type InterviewStage = 'config' | 'interview';
@@ -27,6 +27,7 @@ export default function Interview({resumeText, resumeId, onBack, onInterviewComp
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+  const [creationStatusMessage, setCreationStatusMessage] = useState('');
   const [checkingUnfinished, setCheckingUnfinished] = useState(false);
   const [unfinishedSession, setUnfinishedSession] = useState<InterviewSession | null>(null);
   const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
@@ -251,17 +252,38 @@ export default function Interview({resumeText, resumeId, onBack, onInterviewComp
 
   const startInterview = async () => {
     setIsCreating(true);
+    setCreationStatusMessage('正在提交创建任务...');
     setError('');
 
     try {
-      const newSession = await interviewApi.createSession({
+      const {taskId} = await interviewApi.createSessionTask({
         resumeText,
         questionCount,
         resumeId,
         forceCreate: forceCreateNew
       });
 
+      let taskStatus: InterviewCreationTaskStatus | null = null;
+      for (let attempt = 0; attempt < 240; attempt++) {
+        await new Promise(resolve => window.setTimeout(resolve, 1500));
+        taskStatus = await interviewApi.getCreateSessionTaskStatus(taskId);
+        setCreationStatusMessage(taskStatus.message || '正在创建面试...');
+
+        if (taskStatus.status === 'COMPLETED') {
+          break;
+        }
+        if (taskStatus.status === 'FAILED') {
+          throw new Error(taskStatus.error || taskStatus.message || '创建面试失败，请重试');
+        }
+      }
+
+      if (!taskStatus || taskStatus.status !== 'COMPLETED' || !taskStatus.session) {
+        throw new Error('创建超时，请稍后重试');
+      }
+
+      const newSession = taskStatus.session;
       setForceCreateNew(false);
+      setCreationStatusMessage('');
 
       const hasProgress =
         newSession.currentQuestionIndex > 0 ||
@@ -291,14 +313,14 @@ export default function Interview({resumeText, resumeId, onBack, onInterviewComp
         setStage('interview');
       }
     } catch (err) {
-      setError('创建面试失败，请重试');
+      setError(err instanceof Error ? err.message : '创建面试失败，请重试');
       console.error(err);
       setForceCreateNew(false);
+      setCreationStatusMessage('');
     } finally {
       setIsCreating(false);
     }
   };
-
   const handleSelectQuestion = (questionIndex: number) => {
     if (!session) return;
 
@@ -543,7 +565,7 @@ export default function Interview({resumeText, resumeId, onBack, onInterviewComp
               onStartNew={handleStartNew}
               resumeText={resumeText}
               onBack={onBack}
-              error={error}
+              error={error || creationStatusMessage}
             />
           </div>
         ) : session && currentQuestion ? (

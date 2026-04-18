@@ -36,7 +36,7 @@ export default function InterviewConfigPanel({
         <header className="mb-10">
           <h1 className="text-[28px] font-black tracking-tight text-ds-fg dark:text-neutral-50">开始一场模拟面试</h1>
           <p className="mt-2 max-w-prose text-[15px] leading-relaxed text-ds-fg-muted dark:text-neutral-400">
-            选择题目数量后，系统会基于你的简历生成结构化问答。界面采用「文档式」阅读体验，便于长时间作答。
+            选择题目数量后，系统会基于你的简历同步生成结构化问答和参考答案。界面采用「文档式」阅读体验，便于长时间作答。
           </p>
         </header>
 
@@ -142,21 +142,28 @@ export default function InterviewConfigPanel({
             >
               返回
             </button>
-            <button
-              type="button"
-              onClick={onStart}
-              disabled={isCreating}
-              className="inline-flex flex-1 items-center justify-center gap-2 rounded-pill border border-white/12 bg-white px-8 py-3 text-[14px] font-black text-slate-950 transition hover:bg-white/92 disabled:cursor-not-allowed disabled:opacity-45 sm:flex-none"
-            >
+            <div className="flex flex-col items-stretch gap-2 sm:items-end">
+              <button
+                type="button"
+                onClick={onStart}
+                disabled={isCreating}
+                className="inline-flex flex-1 items-center justify-center gap-2 rounded-pill border border-white/12 bg-white px-8 py-3 text-[14px] font-black text-slate-950 transition hover:bg-white/92 disabled:cursor-not-allowed disabled:opacity-45 sm:flex-none"
+              >
+                {isCreating ? (
+                  <>
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-ds-bg/30 border-t-ds-bg dark:border-neutral-950/30 dark:border-t-neutral-950" />
+                    正在生成题目与参考答案，请稍候…
+                  </>
+                ) : (
+                  <>开始面试</>
+                )}
+              </button>
               {isCreating ? (
-                <>
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-ds-bg/30 border-t-ds-bg dark:border-neutral-950/30 dark:border-t-neutral-950" />
-                  正在生成题目…
-                </>
-              ) : (
-                <>开始面试</>
-              )}
-            </button>
+                <p className="text-center text-[12px] text-white/55 sm:text-right">
+                  首次创建可能需要几分钟，请勿重复点击或关闭页面。
+                </p>
+              ) : null}
+            </div>
           </div>
         </section>
       </motion.div>

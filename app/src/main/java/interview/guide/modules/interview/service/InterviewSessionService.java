@@ -83,13 +83,21 @@ public class InterviewSessionService {
             SessionStatus.CREATED
         );
 
-        // 保存到数据库
+        // 保存到数据库，并同步生成参考答案
         if (request.resumeId() != null) {
             try {
                 persistenceService.saveSession(sessionId, request.resumeId(),
                     questions.size(), questions, userId);
+                persistenceService.prefetchReferenceAnswers(sessionId);
             } catch (Exception e) {
-                log.warn("保存面试会话到数据库失败: {}", e.getMessage());
+                sessionCache.deleteSession(sessionId);
+                try {
+                    persistenceService.deleteSessionBySessionId(sessionId);
+                } catch (Exception cleanupError) {
+                    log.warn("创建失败后清理面试会话失败: sessionId={}, error={}", sessionId, cleanupError.getMessage());
+                }
+                log.warn("保存面试会话或同步生成参考答案失败: {}", e.getMessage(), e);
+                throw new BusinessException(ErrorCode.INTERVIEW_EVALUATION_FAILED, "创建面试失败：参考答案生成失败，请重试");
             }
         }
 

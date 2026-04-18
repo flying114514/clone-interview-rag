@@ -6,6 +6,7 @@ import interview.guide.common.model.AsyncTaskStatus;
 import interview.guide.modules.interview.model.InterviewAnswerEntity;
 import interview.guide.modules.interview.model.InterviewQuestionDTO;
 import interview.guide.modules.interview.model.InterviewReportDTO;
+import interview.guide.modules.interview.model.InterviewReportDTO.ReferenceAnswer;
 import interview.guide.modules.interview.model.InterviewSessionEntity;
 import interview.guide.modules.interview.repository.InterviewAnswerRepository;
 import interview.guide.modules.interview.repository.InterviewSessionRepository;
@@ -37,6 +38,7 @@ public class InterviewPersistenceService {
     private final ResumeRepository resumeRepository;
     private final ObjectMapper objectMapper;
     private final InterviewQuestionCollectionService collectionService;
+    private final AnswerEvaluationService answerEvaluationService;
     
     /**
      * 保存新的面试会话
@@ -326,6 +328,74 @@ public class InterviewPersistenceService {
      */
     public List<InterviewAnswerEntity> findAnswersBySessionId(String sessionId) {
         return answerRepository.findBySession_SessionIdOrderByQuestionIndex(sessionId);
+    }
+
+    /**
+     * 预生成会话主问题的标准答案，并提前落库，供收藏时直接复用。
+     * 追问题在收藏时按需兜底生成，以缩短创建面试耗时。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void prefetchReferenceAnswers(String sessionId) {
+        InterviewSessionEntity session = sessionRepository.findBySessionIdWithResume(sessionId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.INTERVIEW_SESSION_NOT_FOUND));
+
+        try {
+            List<InterviewQuestionDTO> questions = objectMapper.readValue(
+                session.getQuestionsJson(),
+                new TypeReference<List<InterviewQuestionDTO>>() {}
+            );
+
+            List<InterviewAnswerEntity> existingAnswers = answerRepository.findBySession_SessionIdOrderByQuestionIndex(sessionId);
+            java.util.Map<Integer, InterviewAnswerEntity> answerMap = existingAnswers.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                    InterviewAnswerEntity::getQuestionIndex,
+                    a -> a,
+                    (a1, a2) -> a1
+                ));
+
+            List<ReferenceAnswer> referenceAnswers = new java.util.ArrayList<>();
+            List<InterviewAnswerEntity> answersToSave = new java.util.ArrayList<>();
+
+            for (InterviewQuestionDTO question : questions) {
+                if (question == null || question.isFollowUp()) {
+                    continue;
+                }
+
+                ReferenceAnswer generated = answerEvaluationService.generateReferenceAnswer(
+                    sessionId,
+                    session.getResume().getResumeText(),
+                    question
+                );
+                referenceAnswers.add(generated);
+
+                InterviewAnswerEntity answer = answerMap.get(question.questionIndex());
+                if (answer == null) {
+                    answer = new InterviewAnswerEntity();
+                    answer.setSession(session);
+                    answer.setQuestionIndex(question.questionIndex());
+                }
+
+                answer.setQuestion(question.question());
+                answer.setCategory(question.category());
+                answer.setReferenceAnswer(generated.referenceAnswer());
+                if (generated.keyPoints() != null && !generated.keyPoints().isEmpty()) {
+                    answer.setKeyPointsJson(objectMapper.writeValueAsString(generated.keyPoints()));
+                } else {
+                    answer.setKeyPointsJson(null);
+                }
+                answersToSave.add(answer);
+            }
+
+            session.setReferenceAnswersJson(objectMapper.writeValueAsString(referenceAnswers));
+            sessionRepository.save(session);
+            if (!answersToSave.isEmpty()) {
+                answerRepository.saveAll(answersToSave);
+            }
+            log.info("主问题标准答案预生成完成并已落库: sessionId={}, count={}", sessionId, referenceAnswers.size());
+        } catch (Exception e) {
+            log.error("标准答案预生成失败: sessionId={}, error={}", sessionId, e.getMessage(), e);
+            throw new BusinessException(ErrorCode.INTERVIEW_EVALUATION_FAILED, "标准答案预生成失败：" + e.getMessage());
+        }
     }
 
     /**

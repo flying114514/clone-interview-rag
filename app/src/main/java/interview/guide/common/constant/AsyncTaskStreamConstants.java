@@ -2,7 +2,7 @@ package interview.guide.common.constant;
 
 /**
  * 异步任务 Redis Stream 通用常量
- * 包含知识库向量化和简历分析两个异步任务的配置
+ * 包含知识库向量化、简历分析和面试评估的配置
  */
 public final class AsyncTaskStreamConstants {
 

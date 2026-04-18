@@ -2,7 +2,9 @@ import { request } from './request';
 import type {
   CollectInterviewQuestionResponse,
   CreateInterviewRequest,
+  CreateInterviewTaskResponse,
   CurrentQuestionResponse,
+  InterviewCreationTaskStatus,
   InterviewReport,
   InterviewSession,
   SubmitAnswerRequest,
@@ -11,11 +13,25 @@ import type {
 
 export const interviewApi = {
   /**
+   * 创建面试异步任务
+   */
+  async createSessionTask(req: CreateInterviewRequest): Promise<CreateInterviewTaskResponse> {
+    return request.post<CreateInterviewTaskResponse>('/api/interview/sessions/tasks', req);
+  },
+
+  /**
+   * 查询创建面试异步任务状态
+   */
+  async getCreateSessionTaskStatus(taskId: string): Promise<InterviewCreationTaskStatus> {
+    return request.get<InterviewCreationTaskStatus>(`/api/interview/sessions/tasks/${taskId}`);
+  },
+
+  /**
    * 创建面试会话
    */
   async createSession(req: CreateInterviewRequest): Promise<InterviewSession> {
     return request.post<InterviewSession>('/api/interview/sessions', req, {
-      timeout: 180000, // 3分钟超时，AI生成问题需要时间
+      timeout: 420000, // 同步生成问题与参考答案，适当放宽超时
     });
   },
 

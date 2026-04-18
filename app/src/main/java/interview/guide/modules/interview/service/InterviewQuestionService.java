@@ -1,7 +1,6 @@
 package interview.guide.modules.interview.service;
 
 import interview.guide.common.ai.StructuredOutputInvoker;
-import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.modules.interview.model.InterviewQuestionDTO;
 import interview.guide.modules.interview.model.InterviewQuestionDTO.QuestionType;
@@ -17,54 +16,46 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
-/**
- * 面试问题生成服务
- * 基于简历内容生成针对性的面试问题
- */
 @Service
 public class InterviewQuestionService {
-    
     private static final Logger log = LoggerFactory.getLogger(InterviewQuestionService.class);
-    
+    private static final double PROJECT_RATIO = 0.20;
+    private static final double MYSQL_RATIO = 0.20;
+    private static final double REDIS_RATIO = 0.20;
+    private static final double JAVA_BASIC_RATIO = 0.10;
+    private static final double JAVA_COLLECTION_RATIO = 0.10;
+    private static final double JAVA_CONCURRENT_RATIO = 0.10;
+    private static final int MAX_FOLLOW_UP_COUNT = 2;
+
     private final ChatClient chatClient;
     private final PromptTemplate systemPromptTemplate;
     private final PromptTemplate userPromptTemplate;
     private final BeanOutputConverter<QuestionListDTO> outputConverter;
     private final StructuredOutputInvoker structuredOutputInvoker;
     private final int followUpCount;
-    
-    // 问题类型权重分配（按优先级）
-    private static final double PROJECT_RATIO = 0.20;      // 20% 项目经历
-    private static final double MYSQL_RATIO = 0.20;        // 20% MySQL
-    private static final double REDIS_RATIO = 0.20;        // 20% Redis
-    private static final double JAVA_BASIC_RATIO = 0.10;   // 10% Java基础
-    private static final double JAVA_COLLECTION_RATIO = 0.10; // 10% 集合
-    private static final double JAVA_CONCURRENT_RATIO = 0.10; // 10% 并发
-    private static final int MAX_FOLLOW_UP_COUNT = 2;
-    
-    // 中间DTO用于接收AI响应
-    private record QuestionListDTO(
-        List<QuestionDTO> questions
-    ) {}
-    
-    private record QuestionDTO(
-        String question,
-        String type,
-        String category,
-        List<String> followUps
-    ) {}
-    
+
+    private record QuestionListDTO(List<QuestionDTO> questions) {}
+    private record QuestionDTO(String question, String type, String category, List<String> followUps) {}
+    private record QuestionDistribution(int project, int mysql, int redis, int javaBasic, int javaCollection, int javaConcurrent, int spring) {}
+    private record QuestionSeed(String question, QuestionType type, String category, int priority) {}
+
     public InterviewQuestionService(
-            ChatClient.Builder chatClientBuilder,
-            StructuredOutputInvoker structuredOutputInvoker,
-            @Value("classpath:prompts/interview-question-system.st") Resource systemPromptResource,
-            @Value("classpath:prompts/interview-question-user.st") Resource userPromptResource,
-            @Value("${app.interview.follow-up-count:1}") int followUpCount) throws IOException {
+        ChatClient.Builder chatClientBuilder,
+        StructuredOutputInvoker structuredOutputInvoker,
+        @Value("classpath:prompts/interview-question-system.st") Resource systemPromptResource,
+        @Value("classpath:prompts/interview-question-user.st") Resource userPromptResource,
+        @Value("${app.interview.follow-up-count:1}") int followUpCount
+    ) throws IOException {
         this.chatClient = chatClientBuilder.build();
         this.structuredOutputInvoker = structuredOutputInvoker;
         this.systemPromptTemplate = new PromptTemplate(systemPromptResource.getContentAsString(StandardCharsets.UTF_8));
@@ -72,95 +63,53 @@ public class InterviewQuestionService {
         this.outputConverter = new BeanOutputConverter<>(QuestionListDTO.class);
         this.followUpCount = Math.max(0, Math.min(followUpCount, MAX_FOLLOW_UP_COUNT));
     }
-    
-    /**
-     * 生成面试问题
-     * 
-     * @param resumeText 简历文本
-     * @param questionCount 问题数量
-     * @param historicalQuestions 历史问题列表（可选）
-     * @return 面试问题列表
-     */
+
     public List<InterviewQuestionDTO> generateQuestions(String resumeText, int questionCount, List<String> historicalQuestions) {
-        log.info("开始生成面试问题，简历长度: {}, 问题数量: {}, 历史问题数: {}", 
-            resumeText.length(), questionCount, historicalQuestions != null ? historicalQuestions.size() : 0);
-        
-        // 计算各类型问题数量
-        QuestionDistribution distribution = calculateDistribution(questionCount);
-        
+        String safeResumeText = resumeText == null ? "" : resumeText;
+        log.info("开始生成面试问题，简历长度: {}, 问题数量: {}, 历史问题数: {}",
+            safeResumeText.length(), questionCount, historicalQuestions != null ? historicalQuestions.size() : 0);
         try {
-            // 加载系统提示词
-            String systemPrompt = systemPromptTemplate.render();
-            
-            // 加载用户提示词并填充变量
-            Map<String, Object> variables = new HashMap<>();
-            variables.put("questionCount", questionCount);
-            variables.put("projectCount", distribution.project);
-            variables.put("mysqlCount", distribution.mysql);
-            variables.put("redisCount", distribution.redis);
-            variables.put("javaBasicCount", distribution.javaBasic);
-            variables.put("javaCollectionCount", distribution.javaCollection);
-            variables.put("javaConcurrentCount", distribution.javaConcurrent);
-            variables.put("springCount", distribution.spring);
-            variables.put("followUpCount", followUpCount);
-            variables.put("resumeText", resumeText);
-            
-            // 添加历史问题
-            if (historicalQuestions != null && !historicalQuestions.isEmpty()) {
-                String historicalText = String.join("\n", historicalQuestions);
-                variables.put("historicalQuestions", historicalText);
-            } else {
-                variables.put("historicalQuestions", "暂无历史提问");
-            }
-            
-            String userPrompt = userPromptTemplate.render(variables);
-            
-            // 添加格式指令到系统提示词
-            String systemPromptWithFormat = systemPrompt + "\n\n" + outputConverter.getFormat();
-            
-            // 调用AI
-            QuestionListDTO dto;
-            try {
-                dto = structuredOutputInvoker.invoke(
-                    chatClient,
-                    systemPromptWithFormat,
-                    userPrompt,
-                    outputConverter,
-                    ErrorCode.INTERVIEW_QUESTION_GENERATION_FAILED,
-                    "面试问题生成失败：",
-                    "结构化问题生成",
-                    log
-                );
-                log.debug("AI响应解析成功: questions count={}", dto.questions().size());
-            } catch (Exception e) {
-                log.error("面试问题生成AI调用失败: {}", e.getMessage(), e);
-                throw new BusinessException(ErrorCode.INTERVIEW_QUESTION_GENERATION_FAILED, 
-                    "面试问题生成失败：" + e.getMessage());
-            }
-            
-            // 转换为业务对象
+            QuestionDistribution d = calculateDistribution(questionCount);
+            Map<String, Object> vars = new HashMap<>();
+            vars.put("questionCount", questionCount);
+            vars.put("projectCount", d.project);
+            vars.put("mysqlCount", d.mysql);
+            vars.put("redisCount", d.redis);
+            vars.put("javaBasicCount", d.javaBasic);
+            vars.put("javaCollectionCount", d.javaCollection);
+            vars.put("javaConcurrentCount", d.javaConcurrent);
+            vars.put("springCount", d.spring);
+            vars.put("followUpCount", followUpCount);
+            vars.put("resumeText", safeResumeText);
+            vars.put("generationHint", buildGenerationHint(safeResumeText, historicalQuestions));
+            vars.put("historicalQuestions", formatHistoricalQuestions(historicalQuestions));
+
+            QuestionListDTO dto = structuredOutputInvoker.invoke(
+                chatClient,
+                systemPromptTemplate.render() + "\n\n" + outputConverter.getFormat(),
+                userPromptTemplate.render(vars),
+                outputConverter,
+                ErrorCode.INTERVIEW_QUESTION_GENERATION_FAILED,
+                "面试问题生成失败：",
+                "结构化问题生成",
+                log
+            );
+
             List<InterviewQuestionDTO> questions = convertToQuestions(dto);
-            log.info("成功生成 {} 个面试问题", questions.size());
-            
-            return questions;
-            
+            if (!questions.isEmpty()) {
+                return questions;
+            }
+            log.warn("AI 返回空题目，使用动态兜底题库");
         } catch (Exception e) {
             log.error("生成面试问题失败: {}", e.getMessage(), e);
-            // 返回默认问题集
-            return generateDefaultQuestions(questionCount);
         }
+        return generateDefaultQuestions(safeResumeText, questionCount, historicalQuestions);
     }
 
-    /**
-     * 生成面试问题（不带历史问题）
-     */
     public List<InterviewQuestionDTO> generateQuestions(String resumeText, int questionCount) {
         return generateQuestions(resumeText, questionCount, null);
     }
-    
-    /**
-     * 计算各类型问题分布
-     */
+
     private QuestionDistribution calculateDistribution(int total) {
         int project = Math.max(1, (int) Math.round(total * PROJECT_RATIO));
         int mysql = Math.max(1, (int) Math.round(total * MYSQL_RATIO));
@@ -168,120 +117,130 @@ public class InterviewQuestionService {
         int javaBasic = Math.max(1, (int) Math.round(total * JAVA_BASIC_RATIO));
         int javaCollection = (int) Math.round(total * JAVA_COLLECTION_RATIO);
         int javaConcurrent = (int) Math.round(total * JAVA_CONCURRENT_RATIO);
-        int spring = total - project - mysql - redis - javaBasic - javaCollection - javaConcurrent;
-        
-        // 确保至少有1个
-        spring = Math.max(0, spring);
-        
+        int spring = Math.max(0, total - project - mysql - redis - javaBasic - javaCollection - javaConcurrent);
         return new QuestionDistribution(project, mysql, redis, javaBasic, javaCollection, javaConcurrent, spring);
     }
-    
-    private record QuestionDistribution(
-        int project, int mysql, int redis, 
-        int javaBasic, int javaCollection, int javaConcurrent, int spring
-    ) {}
-    
-    /**
-     * 转换DTO为业务对象
-     */
+
     private List<InterviewQuestionDTO> convertToQuestions(QuestionListDTO dto) {
         List<InterviewQuestionDTO> questions = new ArrayList<>();
-        int index = 0;
-
         if (dto == null || dto.questions() == null) {
             return questions;
         }
-
+        int index = 0;
         for (QuestionDTO q : dto.questions()) {
             if (q == null || q.question() == null || q.question().isBlank()) {
                 continue;
             }
             QuestionType type = parseQuestionType(q.type());
             int mainQuestionIndex = index;
-            questions.add(InterviewQuestionDTO.create(index++, q.question(), type, q.category(), false, null));
-
+            questions.add(InterviewQuestionDTO.create(index++, q.question().trim(), type, q.category(), false, null));
             List<String> followUps = sanitizeFollowUps(q.followUps());
             for (int i = 0; i < followUps.size(); i++) {
-                questions.add(InterviewQuestionDTO.create(
-                    index++,
-                    followUps.get(i),
-                    type,
-                    buildFollowUpCategory(q.category(), i + 1),
-                    true,
-                    mainQuestionIndex
-                ));
+                questions.add(InterviewQuestionDTO.create(index++, followUps.get(i), type, buildFollowUpCategory(q.category(), i + 1), true, mainQuestionIndex));
             }
         }
-        
         return questions;
     }
-    
+
     private QuestionType parseQuestionType(String typeStr) {
         try {
-            return QuestionType.valueOf(typeStr.toUpperCase());
+            return QuestionType.valueOf(typeStr.toUpperCase(Locale.ROOT));
         } catch (Exception e) {
             return QuestionType.JAVA_BASIC;
         }
     }
-    
-    /**
-     * 生成默认问题（备用）
-     */
-    private List<InterviewQuestionDTO> generateDefaultQuestions(int count) {
-        List<InterviewQuestionDTO> questions = new ArrayList<>();
-        
-        String[][] defaultQuestions = {
-            {"请介绍一下你在简历中提到的最重要的项目，你在其中承担了什么角色？", "PROJECT", "项目经历"},
-            {"MySQL的索引有哪些类型？B+树索引的原理是什么？", "MYSQL", "MySQL"},
-            {"Redis支持哪些数据结构？各自的使用场景是什么？", "REDIS", "Redis"},
-            {"Java中HashMap的底层实现原理是什么？JDK8做了哪些优化？", "JAVA_COLLECTION", "Java集合"},
-            {"synchronized和ReentrantLock有什么区别？", "JAVA_CONCURRENT", "Java并发"},
-            {"Spring的IoC和AOP原理是什么？", "SPRING", "Spring"},
-            {"MySQL事务的ACID特性是什么？隔离级别有哪些？", "MYSQL", "MySQL"},
-            {"Redis的持久化机制有哪些？RDB和AOF的区别？", "REDIS", "Redis"},
-            {"Java的垃圾回收机制是怎样的？常见的GC算法有哪些？", "JAVA_BASIC", "Java基础"},
-            {"线程池的核心参数有哪些？如何合理配置？", "JAVA_CONCURRENT", "Java并发"},
-        };
-        
-        int index = 0;
-        for (int i = 0; i < Math.min(count, defaultQuestions.length); i++) {
-            String mainQuestion = defaultQuestions[i][0];
-            QuestionType type = QuestionType.valueOf(defaultQuestions[i][1]);
-            String category = defaultQuestions[i][2];
-            questions.add(InterviewQuestionDTO.create(
-                index++,
-                mainQuestion,
-                type,
-                category,
-                false,
-                null
-            ));
 
-            int mainQuestionIndex = index - 1;
+    private List<InterviewQuestionDTO> generateDefaultQuestions(String resumeText, int count, List<String> historicalQuestions) {
+        Set<String> history = toNormalizedSet(historicalQuestions);
+        List<QuestionSeed> seeds = buildFallbackSeeds(resumeText).stream()
+            .filter(seed -> !history.contains(normalizeQuestion(seed.question())))
+            .collect(Collectors.toCollection(ArrayList::new));
+        if (seeds.isEmpty()) {
+            seeds = buildFallbackSeeds(resumeText);
+        }
+
+        List<InterviewQuestionDTO> result = new ArrayList<>();
+        int index = 0;
+        for (QuestionSeed seed : seeds.stream().limit(count).toList()) {
+            result.add(InterviewQuestionDTO.create(index, seed.question(), seed.type(), seed.category(), false, null));
+            int mainQuestionIndex = index++;
             for (int j = 0; j < followUpCount; j++) {
-                questions.add(InterviewQuestionDTO.create(
-                    index++,
-                    buildDefaultFollowUp(mainQuestion, j + 1),
-                    type,
-                    buildFollowUpCategory(category, j + 1),
-                    true,
-                    mainQuestionIndex
-                ));
+                result.add(InterviewQuestionDTO.create(index++, buildFallbackFollowUp(j + 1), seed.type(), buildFollowUpCategory(seed.category(), j + 1), true, mainQuestionIndex));
             }
         }
-        
-        return questions;
+        return result;
+    }
+
+    private List<QuestionSeed> buildFallbackSeeds(String resumeText) {
+        String text = resumeText == null ? "" : resumeText.toLowerCase(Locale.ROOT);
+        List<QuestionSeed> seeds = new ArrayList<>();
+        seeds.add(new QuestionSeed("请挑一个你简历里最能体现业务价值的项目，详细说明你的职责分工、关键方案以及最终结果。", QuestionType.PROJECT, "项目经历", 100));
+        if (containsAny(text, "mysql", "sql", "索引", "事务", "数据库")) {
+            seeds.add(new QuestionSeed("你在项目里是如何做 MySQL 索引设计和 SQL 调优的？请结合一个慢查询优化案例展开说明。", QuestionType.MYSQL, "MySQL", 95));
+        }
+        if (containsAny(text, "redis", "缓存", "分布式锁", "lua")) {
+            seeds.add(new QuestionSeed("你在项目中是如何使用 Redis 的？缓存一致性、击穿或分布式锁问题你是怎么处理的？", QuestionType.REDIS, "Redis", 94));
+        }
+        if (containsAny(text, "spring boot", "springboot", "spring")) {
+            seeds.add(new QuestionSeed("请结合你的项目说明 Spring / Spring Boot 为你解决了什么问题，核心自动装配或 Bean 管理机制你是怎么理解的？", QuestionType.SPRING_BOOT, "Spring Boot", 93));
+        }
+        if (containsAny(text, "线程池", "并发", "多线程", "锁", "线程")) {
+            seeds.add(new QuestionSeed("你在实际项目里处理过哪些并发问题？请结合线程池、锁竞争或异步编排中的一个场景具体说明。", QuestionType.JAVA_CONCURRENT, "Java并发", 92));
+        }
+        if (containsAny(text, "jvm", "gc", "内存", "异常")) {
+            seeds.add(new QuestionSeed("请结合你的开发经验，谈谈一次 JVM、GC、异常治理或内存问题的分析与定位过程。", QuestionType.JAVA_BASIC, "Java基础", 91));
+        }
+        if (containsAny(text, "hashmap", "map", "list", "set", "集合")) {
+            seeds.add(new QuestionSeed("Java 集合在你的项目里主要承担了什么职责？请结合一个具体场景说明为什么选这个集合以及它的底层原理。", QuestionType.JAVA_COLLECTION, "Java集合", 90));
+        }
+        seeds.add(new QuestionSeed("请解释一次你在项目中遇到的线上故障，从监控发现到根因定位，再到修复和复盘的完整过程。", QuestionType.PROJECT, "故障排查", 80));
+        seeds.add(new QuestionSeed("synchronized、ReentrantLock、CAS 分别适合什么场景？你在项目中是如何做选择的？", QuestionType.JAVA_CONCURRENT, "Java并发", 70));
+        seeds.add(new QuestionSeed("Spring AOP 和 IoC 的核心价值是什么？如果让你排查一个 Bean 注入失效问题，你会怎么定位？", QuestionType.SPRING, "Spring", 69));
+        return seeds.stream().sorted(Comparator.comparingInt(QuestionSeed::priority).reversed()).collect(Collectors.toCollection(ArrayList::new));
+    }
+
+    private boolean containsAny(String text, String... keys) {
+        for (String key : keys) {
+            if (text.contains(key)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String formatHistoricalQuestions(List<String> historicalQuestions) {
+        if (historicalQuestions == null || historicalQuestions.isEmpty()) {
+            return "暂无历史提问";
+        }
+        return historicalQuestions.stream().filter(item -> item != null && !item.isBlank()).collect(Collectors.joining("\n"));
     }
 
     private List<String> sanitizeFollowUps(List<String> followUps) {
         if (followUpCount == 0 || followUps == null || followUps.isEmpty()) {
             return List.of();
         }
-        return followUps.stream()
-            .filter(item -> item != null && !item.isBlank())
-            .map(String::trim)
-            .limit(followUpCount)
-            .collect(Collectors.toList());
+        return followUps.stream().filter(item -> item != null && !item.isBlank()).map(String::trim).limit(followUpCount).collect(Collectors.toList());
+    }
+
+    private String buildGenerationHint(String resumeText, List<String> historicalQuestions) {
+        int resumeHash = Math.abs((resumeText == null ? "" : resumeText).hashCode());
+        int historySize = historicalQuestions == null ? 0 : historicalQuestions.size();
+        return switch (ThreadLocalRandom.current().nextInt(3)) {
+            case 0 -> "本次优先从项目细节切入，再追问原理与优化。resumeHash=" + resumeHash + ", historySize=" + historySize;
+            case 1 -> "本次优先覆盖与历史问题不同的技术点，强调边界条件和故障排查。resumeHash=" + resumeHash + ", historySize=" + historySize;
+            default -> "本次优先按项目落地、底层原理、实战优化组织题目，避免沿用上一轮常见表述。resumeHash=" + resumeHash + ", historySize=" + historySize;
+        };
+    }
+
+    private Set<String> toNormalizedSet(List<String> questions) {
+        if (questions == null || questions.isEmpty()) {
+            return Set.of();
+        }
+        return questions.stream().filter(item -> item != null && !item.isBlank()).map(this::normalizeQuestion).collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    private String normalizeQuestion(String question) {
+        return question == null ? "" : question.replaceAll("\\s+", "").trim().toLowerCase(Locale.ROOT);
     }
 
     private String buildFollowUpCategory(String category, int order) {
@@ -289,10 +248,10 @@ public class InterviewQuestionService {
         return baseCategory + "（追问" + order + "）";
     }
 
-    private String buildDefaultFollowUp(String mainQuestion, int order) {
+    private String buildFallbackFollowUp(int order) {
         if (order == 1) {
-            return "基于“" + mainQuestion + "”，请结合你亲自做过的一个真实场景展开说明。";
+            return "围绕这道题，请你继续说明当时的业务背景、约束条件，以及为什么最终采用这个方案？";
         }
-        return "基于“" + mainQuestion + "”，如果线上出现异常，你会如何定位并给出修复方案？";
+        return "如果把这个场景放到更高并发、更多数据量或更严格 SLA 下，你会如何进一步优化或兜底？";
     }
 }

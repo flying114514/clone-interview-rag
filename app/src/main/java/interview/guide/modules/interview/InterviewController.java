@@ -4,6 +4,7 @@ import interview.guide.common.annotation.RateLimit;
 import interview.guide.common.result.Result;
 import interview.guide.infrastructure.security.SecurityUtils;
 import interview.guide.modules.interview.model.*;
+import interview.guide.modules.interview.service.InterviewCreationTaskService;
 import interview.guide.modules.interview.service.InterviewHistoryService;
 import interview.guide.modules.interview.service.InterviewPersistenceService;
 import interview.guide.modules.interview.service.InterviewQuestionCollectionService;
@@ -31,10 +32,30 @@ import java.util.Map;
 public class InterviewController {
     
     private final InterviewSessionService sessionService;
+    private final InterviewCreationTaskService creationTaskService;
     private final InterviewHistoryService historyService;
     private final InterviewPersistenceService persistenceService;
     private final InterviewQuestionCollectionService collectionService;
     
+    /**
+     * 创建面试异步任务
+     */
+    @PostMapping("/api/interview/sessions/tasks")
+    @RateLimit(dimension = RateLimit.Dimension.GLOBAL, count = 5)
+    @RateLimit(dimension = RateLimit.Dimension.IP, count = 5)
+    public Result<CreateInterviewTaskResponse> createSessionTask(@RequestBody CreateInterviewRequest request) {
+        log.info("提交创建面试异步任务，题目数量: {}", request.questionCount());
+        return Result.success(creationTaskService.createTask(request));
+    }
+
+    /**
+     * 查询创建面试异步任务状态
+     */
+    @GetMapping("/api/interview/sessions/tasks/{taskId}")
+    public Result<InterviewCreationTaskStatusResponse> getCreateSessionTaskStatus(@PathVariable String taskId) {
+        return Result.success(creationTaskService.getTaskStatus(taskId));
+    }
+
     /**
      * 创建面试会话
      */

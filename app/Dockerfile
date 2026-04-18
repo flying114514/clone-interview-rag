@@ -3,8 +3,10 @@
 # 作用：使用包含 JDK 和 Gradle 的完整镜像来编译源代码
 # ==============================================================================
 FROM gradle:8.14-jdk21 AS builder
-# 设置工作目录，后续命令都在这个目录下执行
 WORKDIR /workspace
+
+ENV GRADLE_OPTS="-Dhttps.protocols=TLSv1.2,TLSv1.3 -Djdk.tls.client.protocols=TLSv1.2,TLSv1.3 -Dorg.gradle.internal.http.connectionTimeout=120000 -Dorg.gradle.internal.http.socketTimeout=120000"
+ENV JAVA_TOOL_OPTIONS="-Dhttps.protocols=TLSv1.2,TLSv1.3 -Djdk.tls.client.protocols=TLSv1.2,TLSv1.3"
 
 # 1. 优先复制 Gradle 构建配置文件
 # 技巧：利用 Docker 缓存层机制。

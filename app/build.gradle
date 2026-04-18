@@ -13,12 +13,12 @@ group = 'com.interview'
 version = '0.0.1-SNAPSHOT'
 
 repositories {
-    mavenCentral()
-    maven { url 'https://repo.spring.io/milestone' }
-    // 作为网络受限场景的兜底镜像，放在后面避免 TLS 握手问题优先触发
+    // 网络受限场景优先走国内镜像，降低容器内 TLS 握手失败概率
     maven { url 'https://maven.aliyun.com/repository/public/' }
     maven { url 'https://maven.aliyun.com/repository/spring/' }
     maven { url 'https://maven.aliyun.com/repository/gradle-plugin/' }
+    mavenCentral()
+    maven { url 'https://repo.spring.io/milestone' }
 }
 
 configurations.configureEach {

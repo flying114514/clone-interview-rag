@@ -46,6 +46,21 @@ export interface CreateInterviewRequest {
   forceCreate?: boolean;  // 是否强制创建新会话（忽略未完成的会话）
 }
 
+export interface CreateInterviewTaskResponse {
+  taskId: string;
+}
+
+export type AsyncTaskStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+
+export interface InterviewCreationTaskStatus {
+  taskId: string;
+  status: AsyncTaskStatus;
+  stage: string;
+  message: string;
+  error: string | null;
+  session: InterviewSession | null;
+}
+
 export interface SubmitAnswerRequest {
   sessionId: string;
   questionIndex: number;
