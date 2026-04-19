@@ -2,16 +2,16 @@
 请根据以下候选人简历内容，生成共 {questionCount} 个主问题。
 每个主问题必须额外生成 {followUpCount} 个追问。
 
-## 问题分布要求
-| 类型 | 数量 | 说明 |
-|------|------|------|
-| 项目经历 (PROJECT) | {projectCount} 题 | 基于简历中的具体项目深度提问 |
-| MySQL | {mysqlCount} 题 | 索引、事务、SQL 优化等 |
-| Redis | {redisCount} 题 | 数据结构、缓存策略、分布式锁等 |
-| Java 基础 (JAVA_BASIC) | {javaBasicCount} 题 | 面向对象、JVM、异常处理等 |
-| Java 集合 (JAVA_COLLECTION) | {javaCollectionCount} 题 | 集合框架、源码原理等 |
-| Java 并发 (JAVA_CONCURRENT) | {javaConcurrentCount} 题 | 线程、锁、并发工具类等 |
-| Spring/Spring Boot | {springCount} 题 | IoC/AOP、自动配置等 |
+## 动态题目分布建议
+{distributionPlan}
+
+要求：
+1. 题目分布必须优先贴合候选人的岗位方向、项目经历、工具栈和业务场景。
+2. 如果候选人不是 Java 后端方向，不要强行生成 MySQL、Redis、Java、Spring 等题目。
+3. 如果候选人属于产品、运营、测试、前端、算法、数据、设计等岗位，请围绕其真实简历能力生成对应题目。
+4. 至少保留一部分题目用于深挖项目经历、业务分析、协作方式、问题拆解与结果复盘。
+5. category 字段请使用贴合简历的中文类别名称，例如：项目经历、产品设计、用户研究、测试设计、前端工程、数据分析、算法基础、运营策略、设计方法、沟通协作等。
+6. type 字段仍需从既有枚举中选择最接近的一类；若没有完全匹配的类型，优先使用 PROJECT。
 
 ## 候选人简历
 ---简历内容开始---

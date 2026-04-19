@@ -79,7 +79,7 @@ public class InterviewCreationTaskService {
         try {
             updateTask(task, AsyncTaskStatus.PROCESSING, "CHECKING_UNFINISHED", "正在检查未完成面试...", null, null);
             if (request.resumeId() != null && !Boolean.TRUE.equals(request.forceCreate())) {
-                Optional<InterviewSessionDTO> unfinishedOpt = sessionService.findUnfinishedSession(request.resumeId());
+                Optional<InterviewSessionDTO> unfinishedOpt = sessionService.findUnfinishedSessionForUser(request.resumeId(), userId);
                 if (unfinishedOpt.isPresent()) {
                     updateTask(task, AsyncTaskStatus.COMPLETED, "COMPLETED", "已返回未完成的面试会话", null, unfinishedOpt.get());
                     return;

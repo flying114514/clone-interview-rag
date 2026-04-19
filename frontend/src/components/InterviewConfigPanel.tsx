@@ -1,5 +1,68 @@
 import {AnimatePresence, motion} from 'framer-motion';
+import {useMemo} from 'react';
 import type {InterviewSession} from '../types/interview';
+
+function buildDistributionText(resumeText: string, questionCount: number) {
+  const text = resumeText.toLowerCase();
+  const buckets: Array<{label: string; weight: number}> = [
+    {label: '项目经历', weight: 35},
+  ];
+
+  const containsAny = (...keywords: string[]) => keywords.some(keyword => text.includes(keyword));
+
+  if (containsAny('产品', 'prd', '需求', '原型', 'axure', '用户研究', '竞品', '增长', '转化')) {
+    buckets.push({label: '产品设计', weight: 25}, {label: '业务分析', weight: 20});
+  }
+  if (containsAny('测试', 'jmeter', 'postman', '自动化', '接口测试', '性能测试', 'selenium')) {
+    buckets.push({label: '测试设计', weight: 25}, {label: '质量保障', weight: 20});
+  }
+  if (containsAny('前端', 'vue', 'react', 'typescript', 'javascript', 'html', 'css', '小程序', 'uniapp')) {
+    buckets.push({label: '前端工程', weight: 25}, {label: '性能优化', weight: 15});
+  }
+  if (containsAny('python', '数据分析', 'sql', 'bi', '报表', '指标', '埋点', 'a/b', '实验')) {
+    buckets.push({label: '数据分析', weight: 20});
+  }
+  if (containsAny('算法', '机器学习', '模型', '推荐', '召回', '排序', '特征', '训练')) {
+    buckets.push({label: '算法与模型', weight: 25});
+  }
+  if (containsAny('运营', '活动', '投放', '社群', '内容', '留存', '拉新', '复购')) {
+    buckets.push({label: '运营策略', weight: 25});
+  }
+  if (containsAny('设计', 'ui', 'ux', '交互', '视觉', 'figma', 'sketch')) {
+    buckets.push({label: '设计方法', weight: 20});
+  }
+  if (containsAny('mysql', 'sql', '索引', '事务', '数据库')) {
+    buckets.push({label: 'MySQL / 数据库', weight: 20});
+  }
+  if (containsAny('redis', '缓存', '分布式锁', 'lua')) {
+    buckets.push({label: 'Redis / 缓存', weight: 15});
+  }
+  if (containsAny('spring boot', 'springboot', 'spring')) {
+    buckets.push({label: 'Spring 生态', weight: 12});
+  }
+  if (containsAny('线程池', '并发', '多线程', '锁', '线程')) {
+    buckets.push({label: '并发与稳定性', weight: 12});
+  }
+  if (containsAny('jvm', 'gc', '内存', '异常', 'java')) {
+    buckets.push({label: 'Java 基础', weight: 10});
+  }
+
+  if (buckets.length === 1) {
+    buckets.push({label: '通用能力', weight: 20});
+  }
+
+  const totalWeight = buckets.reduce((sum, bucket) => sum + bucket.weight, 0);
+  let assigned = 0;
+
+  return buckets.map((bucket, index) => {
+    const count = index === buckets.length - 1
+      ? Math.max(1, questionCount - assigned)
+      : Math.max(1, Math.round(questionCount * bucket.weight / totalWeight));
+    assigned += count;
+    const percent = Math.max(5, Math.round(bucket.weight * 100 / totalWeight));
+    return `${bucket.label}(${percent}%)`;
+  }).join(' + ');
+}
 
 interface InterviewConfigPanelProps {
   questionCount: number;
@@ -29,6 +92,7 @@ export default function InterviewConfigPanel({
   error
 }: InterviewConfigPanelProps) {
   const questionCounts = [6, 8, 10, 12, 15];
+  const distributionText = useMemo(() => buildDistributionText(resumeText, questionCount), [resumeText, questionCount]);
 
   return (
     <div className="mx-auto w-full max-w-2xl px-6 py-10 text-white sm:px-10 sm:py-12">
@@ -118,7 +182,7 @@ export default function InterviewConfigPanel({
           </div>
 
           <p className="text-[13px] leading-relaxed text-ds-fg-muted dark:text-neutral-400">
-            题目分布：项目经历(20%) + MySQL(20%) + Redis(20%) + Java基础/集合/并发(30%) + Spring(10%)
+            题目分布：{distributionText}
           </p>
 
           <AnimatePresence>

@@ -135,7 +135,11 @@ public class InterviewSessionService {
      * 查找并恢复未完成的面试会话
      */
     public Optional<InterviewSessionDTO> findUnfinishedSession(Long resumeId) {
-        persistenceService.assertResumeOwnedBy(resumeId, SecurityUtils.requireUserId());
+        return findUnfinishedSessionForUser(resumeId, SecurityUtils.requireUserId());
+    }
+
+    public Optional<InterviewSessionDTO> findUnfinishedSessionForUser(Long resumeId, Long userId) {
+        persistenceService.assertResumeOwnedBy(resumeId, userId);
         try {
             // 1. 先从 Redis 缓存查找
             Optional<String> cachedSessionIdOpt = sessionCache.findUnfinishedSessionId(resumeId);
