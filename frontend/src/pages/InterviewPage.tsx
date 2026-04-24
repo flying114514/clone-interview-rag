@@ -442,25 +442,45 @@ export default function Interview({resumeText, resumeId, onBack, onInterviewComp
             return prev;
           }
 
+          const existing = prev.questions.some(question => question.questionIndex === response.nextQuestion!.questionIndex);
+          const updatedAnswered = prev.questions.map(question => {
+            if (question.questionIndex === currentQuestion.questionIndex) {
+              return {...question, userAnswer: trimmedAnswer};
+            }
+            if (existing && question.questionIndex === response.nextQuestion!.questionIndex) {
+              return response.nextQuestion!;
+            }
+            return question;
+          });
+
+          const answeredPosition = updatedAnswered.findIndex(question => question.questionIndex === currentQuestion.questionIndex);
+          const updatedQuestions = existing
+            ? updatedAnswered
+            : response.nextQuestion!.isFollowUp && answeredPosition >= 0
+              ? [...updatedAnswered.slice(0, answeredPosition + 1), response.nextQuestion!, ...updatedAnswered.slice(answeredPosition + 1)]
+              : [...updatedAnswered, response.nextQuestion!];
+
           return {
             ...prev,
             currentQuestionIndex: response.currentIndex,
             status: 'IN_PROGRESS',
-            questions: prev.questions.map(question => {
-              if (question.questionIndex === currentQuestion.questionIndex) {
-                return {...question, userAnswer: trimmedAnswer};
-              }
-              if (question.questionIndex === response.nextQuestion!.questionIndex) {
-                return response.nextQuestion!;
-              }
-              return question;
-            })
+            currentPrompt: response.nextPrompt ?? null,
+            questions: updatedQuestions,
           };
         });
 
-        setCurrentQuestion(prev => (prev ? {...prev, userAnswer: trimmedAnswer} : prev));
-        setAnswer(trimmedAnswer);
-        setCollectHint('已保存本题回答，可切到任意题继续作答或收藏');
+        setCurrentQuestion(response.nextQuestion);
+        setAnswer('');
+        setMessages(prev => [
+          ...prev,
+          {
+            type: 'interviewer',
+            content: response.nextQuestion!.question,
+            category: response.nextQuestion!.category,
+            questionIndex: response.nextQuestion!.questionIndex,
+          }
+        ]);
+        setCollectHint(response.nextQuestion.isFollowUp ? '本题已提交，已自动进入追问' : '本题已提交，已自动切换到下一题');
       } else {
         setSession(prev => {
           if (!prev || prev.sessionId !== session.sessionId) {

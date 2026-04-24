@@ -120,7 +120,15 @@ export default function ChatArea({
               type="button"
               className={bookmarkBtnClass}
               aria-label="收藏题目"
-              title={collectingQuestion ? '收藏处理中' : currentQuestion.collected ? '取消收藏' : '收藏到知识库'}
+              title={
+                collectingQuestion
+                  ? currentQuestion.collected
+                    ? '正在取消收藏中'
+                    : '正在收藏中'
+                  : currentQuestion.collected
+                    ? '取消收藏'
+                    : '收藏到知识库'
+              }
               onClick={onCollectQuestion}
               disabled={collectingQuestion}
             >
@@ -157,7 +165,7 @@ export default function ChatArea({
           {collectingQuestion ? (
             <p className="mt-2 inline-flex items-center gap-2 rounded-[16px] border border-cyan-300/20 bg-cyan-400/10 px-3 py-2 text-[12px] font-medium text-cyan-100">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              正在收藏中，请稍候…
+              {currentQuestion.collected ? '正在取消收藏中，请稍候…' : '正在收藏中，请稍候…'}
             </p>
           ) : collectHint ? (
             <p className="mt-2 rounded-[16px] border border-emerald-300/16 bg-emerald-400/10 px-3 py-2 text-[12px] font-medium text-emerald-100">

@@ -56,9 +56,16 @@ export default function Sidebar({
   onSelectQuestion,
   disableQuestionSelection = false,
 }: SidebarProps) {
-  const visibleQuestions = session?.questions.filter(
-    q => q.questionIndex === currentQuestion?.questionIndex || Boolean(q.userAnswer?.trim())
-  ) ?? [];
+  const visibleQuestions = (() => {
+    const questions = session?.questions ?? [];
+    const sorted = [...questions].sort((a, b) => a.questionIndex - b.questionIndex);
+    if (!disableQuestionSelection) {
+      return sorted;
+    }
+    return sorted.filter(
+      q => q.questionIndex === currentQuestion?.questionIndex || Boolean(q.userAnswer?.trim())
+    );
+  })();
 
   return (
     <aside className="relative z-10 flex w-full shrink-0 flex-col border-b border-white/10 bg-black/22 backdrop-blur-[22px] md:h-full md:w-[min(100%,280px)] md:border-b-0 md:border-r">
