@@ -14,11 +14,12 @@ type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 interface InterviewProps {
   resumeText: string;
   resumeId?: number;
+  continueSessionId?: string;
   onBack: () => void;
   onInterviewComplete: () => void;
 }
 
-export default function Interview({resumeText, resumeId, onBack, onInterviewComplete}: InterviewProps) {
+export default function Interview({resumeText, resumeId, continueSessionId, onBack, onInterviewComplete}: InterviewProps) {
   const [stage, setStage] = useState<InterviewStage>('config');
   const [questionCount, setQuestionCount] = useState(8);
   const [mode, setMode] = useState<InterviewMode>('TEXT');
@@ -191,11 +192,33 @@ export default function Interview({resumeText, resumeId, onBack, onInterviewComp
   }, [isSubmitting, mode, session, videoInterviewElapsedSeconds]);
 
   useEffect(() => {
-    if (resumeId) {
+    if (!continueSessionId) {
+      return;
+    }
+
+    setCheckingUnfinished(true);
+    setError('');
+    interviewApi.getSession(continueSessionId)
+      .then(sessionData => {
+        restoreSession(sessionData);
+        setUnfinishedSession(null);
+      })
+      .catch(err => {
+        console.error('加载指定面试会话失败', err);
+        setError('加载指定面试会话失败，请重试');
+      })
+      .finally(() => {
+        setCheckingUnfinished(false);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [continueSessionId]);
+
+  useEffect(() => {
+    if (resumeId && !continueSessionId) {
       checkUnfinishedSession();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resumeId]);
+  }, [resumeId, continueSessionId]);
 
   useEffect(() => {
     clearAutoSaveTimer();

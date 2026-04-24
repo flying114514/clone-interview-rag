@@ -68,6 +68,22 @@ public class FileStorageService {
     }
 
     /**
+     * 上传知识库文本内容
+     */
+    public String uploadKnowledgeBaseText(String filename, String content) {
+        if (content == null) {
+            throw new BusinessException(ErrorCode.STORAGE_UPLOAD_FAILED, "上传内容为空");
+        }
+        String safeFilename = (filename == null || filename.isBlank()) ? "interview-archive.md" : filename;
+        return uploadBytes(
+            content.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+            "text/markdown; charset=utf-8",
+            safeFilename,
+            "knowledgebases"
+        );
+    }
+
+    /**
      * 删除知识库文件
      */
     public void deleteKnowledgeBase(String fileKey) {
@@ -94,6 +110,27 @@ public class FileStorageService {
         } catch (S3Exception e) {
             log.error("下载文件失败: {} - {}", fileKey, e.getMessage(), e);
             throw new BusinessException(ErrorCode.STORAGE_DOWNLOAD_FAILED, "文件下载失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 通用字节内容上传方法
+     */
+    private String uploadBytes(byte[] content, String contentType, String originalFilename, String prefix) {
+        String fileKey = generateFileKey(originalFilename, prefix);
+        try {
+            PutObjectRequest putRequest = PutObjectRequest.builder()
+                .bucket(storageConfig.getBucket())
+                .key(fileKey)
+                .contentType(contentType)
+                .contentLength((long) content.length)
+                .build();
+            s3Client.putObject(putRequest, RequestBody.fromBytes(content));
+            log.info("字节内容上传成功: {} -> {}", originalFilename, fileKey);
+            return fileKey;
+        } catch (S3Exception e) {
+            log.error("上传字节内容到RustFS失败: {}", e.getMessage(), e);
+            throw new BusinessException(ErrorCode.STORAGE_UPLOAD_FAILED, "文件存储失败: " + e.getMessage());
         }
     }
 
@@ -163,13 +200,11 @@ public class FileStorageService {
      * 通用文件删除方法
      */
     private void deleteFile(String fileKey) {
-        // 空键直接跳过
         if (fileKey == null || fileKey.isEmpty()) {
             log.debug("文件键为空，跳过删除");
             return;
         }
 
-        // 检查文件是否存在，避免不必要的删除操作
         if (!fileExists(fileKey)) {
             log.warn("文件不存在，跳过删除: {}", fileKey);
             return;
@@ -227,12 +262,6 @@ public class FileStorageService {
 
     /**
      * 清理文件名，移除不安全的字符
-     * <p>
-     * 汉字转换为大驼峰拼音，保留字母、数字、点号、下划线和连字符，
-     * 其他字符统一替换为下划线，防止 S3 存储出现问题。
-     *
-     * @param filename 原始文件名
-     * @return 清理后的安全文件名
      */
     private String sanitizeFilename(String filename) {
         if (filename == null || filename.isEmpty()) {
@@ -243,9 +272,6 @@ public class FileStorageService {
 
     /**
      * 将字符串中的汉字转换为大驼峰拼音，非汉字字符保持不变
-     *
-     * @param input 输入字符串
-     * @return 转换后的字符串
      */
     private String convertToPinyin(String input) {
         HanyuPinyinOutputFormat format = new HanyuPinyinOutputFormat();
@@ -257,10 +283,8 @@ public class FileStorageService {
             try {
                 String[] pinyins = PinyinHelper.toHanyuPinyinStringArray(ch, format);
                 if (pinyins != null && pinyins.length > 0) {
-                    // 首字母大写（大驼峰）
                     result.append(capitalize(pinyins[0]));
                 } else {
-                    // 非汉字字符直接保留，但特殊字符需要处理
                     result.append(sanitizeChar(ch));
                 }
             } catch (BadHanyuPinyinOutputFormatCombination e) {

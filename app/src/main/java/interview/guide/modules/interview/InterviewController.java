@@ -242,6 +242,15 @@ public class InterviewController {
     }
     
     /**
+     * 一键整理面试记录并上传知识库
+     */
+    @PostMapping("/api/interview/sessions/{sessionId}/collect-record")
+    public Result<Map<String, Object>> collectInterviewRecord(@PathVariable String sessionId) {
+        log.info("整理面试记录并上传知识库: sessionId={}", sessionId);
+        return Result.success(historyService.collectInterviewSessionToKnowledgeBase(sessionId));
+    }
+
+    /**
      * 删除面试会话
      */
     @DeleteMapping("/api/interview/sessions/{sessionId}")

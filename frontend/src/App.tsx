@@ -134,10 +134,13 @@ function InterviewWrapper() {
     );
   }
 
+  const continueSessionId = (location.state as { continueSessionId?: string })?.continueSessionId;
+
   return (
     <Interview
       resumeText={resumeText}
       resumeId={parseInt(resumeId, 10)}
+      continueSessionId={continueSessionId}
       onBack={handleBack}
       onInterviewComplete={handleInterviewComplete}
     />
@@ -203,7 +206,7 @@ function InterviewHistoryWrapper() {
   };
 
   const handleContinueInterview = (resumeId: number, _sessionId: string) => {
-    navigate(`/interview/${resumeId}`);
+    navigate(`/interview/${resumeId}`, { state: { continueSessionId: _sessionId } });
   };
 
   return <InterviewHistoryPage onBack={handleBack} onViewInterview={handleViewInterview} onContinueInterview={handleContinueInterview} />;

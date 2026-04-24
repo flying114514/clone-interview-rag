@@ -24,6 +24,7 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('analysis');
   const [exporting, setExporting] = useState<string | null>(null);
+  const [collectingRecordSessionId, setCollectingRecordSessionId] = useState<string | null>(null);
   const [[page, direction], setPage] = useState([0, 0]);
   const [detailView, setDetailView] = useState<DetailViewType>('list');
   const [selectedInterview, setSelectedInterview] = useState<InterviewDetail | null>(null);
@@ -152,6 +153,19 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
     }
   };
 
+  const handleCollectInterviewRecord = async (sessionId: string) => {
+    setCollectingRecordSessionId(sessionId);
+    try {
+      const result = await historyApi.collectInterviewRecord(sessionId);
+      const statusText = result.vectorStatus === 'COMPLETED' ? '已完成向量化' : '已进入向量化队列';
+      toast.success(`已整理并上传知识库（${result.knowledgeBaseCategory}）· ${statusText}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '整理上传失败，请重试');
+    } finally {
+      setCollectingRecordSessionId(null);
+    }
+  };
+
   const handleViewInterview = async (sessionId: string) => {
     setLoadingInterview(true);
     try {
@@ -268,17 +282,30 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
 
         <div className="flex gap-3">
           {detailView === 'interviewDetail' && selectedInterview && (
-            <motion.button
-              type="button"
-              onClick={() => handleExportInterviewPdf(selectedInterview.sessionId)}
-              disabled={exporting === selectedInterview.sessionId}
-              className="flex items-center gap-2 rounded-pill border border-ds-border-strong bg-ds-bg px-5 py-2.5 text-sm font-bold text-ds-fg transition-all hover:bg-ds-bg-subtle disabled:opacity-50 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:hover:bg-neutral-900"
-              whileHover={{scale: 1.02}}
-              whileTap={{scale: 0.98}}
-            >
-              <Download className="h-4 w-4" strokeWidth={1.75} />
-              {exporting === selectedInterview.sessionId ? '导出中…' : '导出 PDF'}
-            </motion.button>
+            <>
+              <motion.button
+                type="button"
+                onClick={() => handleExportInterviewPdf(selectedInterview.sessionId)}
+                disabled={exporting === selectedInterview.sessionId || collectingRecordSessionId === selectedInterview.sessionId}
+                className="flex items-center gap-2 rounded-pill border border-ds-border-strong bg-ds-bg px-5 py-2.5 text-sm font-bold text-ds-fg transition-all hover:bg-ds-bg-subtle disabled:opacity-50 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:hover:bg-neutral-900"
+                whileHover={{scale: 1.02}}
+                whileTap={{scale: 0.98}}
+              >
+                <Download className="h-4 w-4" strokeWidth={1.75} />
+                {exporting === selectedInterview.sessionId ? '导出中…' : '导出 PDF'}
+              </motion.button>
+              <motion.button
+                type="button"
+                onClick={() => handleCollectInterviewRecord(selectedInterview.sessionId)}
+                disabled={collectingRecordSessionId === selectedInterview.sessionId || exporting === selectedInterview.sessionId}
+                className="flex items-center gap-2 rounded-pill border border-cyan-300/35 bg-cyan-400/12 px-5 py-2.5 text-sm font-bold text-cyan-100 transition-all hover:bg-cyan-400/18 disabled:opacity-50"
+                whileHover={{scale: 1.02}}
+                whileTap={{scale: 0.98}}
+              >
+                <MessageSquare className="h-4 w-4" strokeWidth={1.75} />
+                {collectingRecordSessionId === selectedInterview.sessionId ? '整理上传中…' : '一键整理并上传知识库'}
+              </motion.button>
+            </>
           )}
           {detailView !== 'interviewDetail' && (
             <motion.button

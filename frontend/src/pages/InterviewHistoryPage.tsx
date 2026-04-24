@@ -3,7 +3,8 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { EvaluateStatus, historyApi, InterviewItem } from '../api/history';
 import { formatDate } from '../utils/date';
 import DeleteConfirmDialog from '../components/dialogs/DeleteConfirmDialog';
-import { AlertCircle, CheckCircle, ChevronRight, Clock, Download, FileText, Loader2, PlayCircle, RefreshCw, Search, Trash2, TrendingUp, Users } from 'lucide-react';
+import { AlertCircle, CheckCircle, ChevronRight, Clock, Download, FileText, Loader2, PlayCircle, RefreshCw, Search, Sparkles, Trash2, TrendingUp, Users } from 'lucide-react';
+import { toast } from 'sonner';
 import type { LucideIcon } from 'lucide-react';
 
 interface InterviewHistoryPageProps {
@@ -62,6 +63,7 @@ export default function InterviewHistoryPage({ onBack: _onBack, onViewInterview,
   const [deleteItem, setDeleteItem] = useState<InterviewWithResume | null>(null);
   const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(new Set());
   const [exporting, setExporting] = useState<string | null>(null);
+  const [collectingRecord, setCollectingRecord] = useState<string | null>(null);
   const pollingRef = useRef<number | null>(null);
 
   const loadAllInterviews = useCallback(async (isPolling = false) => {
@@ -111,6 +113,20 @@ export default function InterviewHistoryPage({ onBack: _onBack, onViewInterview,
       const a = document.createElement('a'); a.href = url; a.download = `面试报告_${sessionId.slice(-8)}.pdf`; document.body.appendChild(a); a.click(); document.body.removeChild(a); window.URL.revokeObjectURL(url);
     } catch { alert('导出失败，请重试'); }
     finally { setExporting(null); }
+  };
+
+  const handleCollectRecord = async (sessionId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCollectingRecord(sessionId);
+    try {
+      const result = await historyApi.collectInterviewRecord(sessionId);
+      const statusText = result.vectorStatus === 'COMPLETED' ? '已完成向量化' : '已进入向量化队列';
+      toast.success(`已整理并上传知识库（${result.knowledgeBaseCategory}）· ${statusText}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '整理上传失败，请重试');
+    } finally {
+      setCollectingRecord(null);
+    }
   };
 
   const list = interviews.filter(i => i.resumeFilename.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -201,7 +217,7 @@ export default function InterviewHistoryPage({ onBack: _onBack, onViewInterview,
                     <td className="px-6 py-4"><div className="flex items-center gap-2"><StatusIcon interview={i} /><span className="text-sm text-white/72">{getStatusText(i)}</span></div></td>
                     <td className="px-6 py-4">{isEvaluateCompleted(i) && i.overallScore !== null ? <div className="flex items-center gap-3"><div className="h-2 w-16 overflow-hidden rounded-full bg-white/12"><motion.div className={`h-full ${getScoreColor(i.overallScore)} rounded-full`} initial={{ width: 0 }} animate={{ width: `${i.overallScore}%` }} transition={{ duration: 0.8, delay: idx * 0.05 }} /></div><span className="font-semibold text-white">{i.overallScore}</span></div> : isEvaluating(i) ? <span className="text-sm text-sky-300">生成中…</span> : isEvaluateFailed(i) ? <span className="text-sm text-rose-300" title={i.evaluateError}>失败</span> : <span className="text-white/45">-</span>}</td>
                     <td className="px-6 py-4 text-sm text-white/62">{formatDate(i.createdAt)}</td>
-                    <td className="px-6 py-4 text-right"><div className="flex items-center justify-end gap-1">{isInProgressStatus(i.status) ? <button onClick={e => { e.stopPropagation(); onContinueInterview(i.resumeId, i.sessionId); }} className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia-300/60 bg-fuchsia-400/25 px-4 py-2 text-sm font-black text-white shadow-[0_0_20px_rgba(232,121,249,0.38)] transition hover:scale-[1.03] hover:bg-fuchsia-400/35" title="继续面试"><PlayCircle className="h-4 w-4" />继续面试</button> : null}{isEvaluateCompleted(i) ? <button onClick={e => handleExport(i.sessionId, e)} disabled={exporting === i.sessionId} className="rounded-full p-2 text-white/55 hover:bg-white/[0.08] hover:text-white disabled:opacity-50">{exporting === i.sessionId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}</button> : null}<button onClick={e => { e.stopPropagation(); setDeleteItem(i); }} disabled={deletingSessionId === i.sessionId} className="rounded-full p-2 text-white/55 hover:bg-rose-500/15 hover:text-rose-300 disabled:opacity-50"><Trash2 className="h-4 w-4" /></button><ChevronRight className="h-5 w-5 text-white/35 transition group-hover:translate-x-0.5 group-hover:text-white/75" /></div></td>
+                    <td className="px-6 py-4 text-right"><div className="flex items-center justify-end gap-1">{isInProgressStatus(i.status) ? <button onClick={e => { e.stopPropagation(); onContinueInterview(i.resumeId, i.sessionId); }} className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia-300/60 bg-fuchsia-400/25 px-4 py-2 text-sm font-black text-white shadow-[0_0_20px_rgba(232,121,249,0.38)] transition hover:scale-[1.03] hover:bg-fuchsia-400/35" title="继续面试"><PlayCircle className="h-4 w-4" />继续面试</button> : null}{isEvaluateCompleted(i) ? <button onClick={e => handleExport(i.sessionId, e)} disabled={exporting === i.sessionId || collectingRecord === i.sessionId} className="rounded-full p-2 text-white/55 hover:bg-white/[0.08] hover:text-white disabled:opacity-50">{exporting === i.sessionId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}</button> : null}{isEvaluateCompleted(i) ? <button onClick={e => handleCollectRecord(i.sessionId, e)} disabled={collectingRecord === i.sessionId || exporting === i.sessionId} className="rounded-full p-2 text-cyan-200/80 hover:bg-cyan-400/15 hover:text-cyan-100 disabled:opacity-50" title="一键整理并上传知识库">{collectingRecord === i.sessionId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}</button> : null}<button onClick={e => { e.stopPropagation(); setDeleteItem(i); }} disabled={deletingSessionId === i.sessionId} className="rounded-full p-2 text-white/55 hover:bg-rose-500/15 hover:text-rose-300 disabled:opacity-50"><Trash2 className="h-4 w-4" /></button><ChevronRight className="h-5 w-5 text-white/35 transition group-hover:translate-x-0.5 group-hover:text-white/75" /></div></td>
                   </motion.tr>
                 ))}
               </AnimatePresence>
