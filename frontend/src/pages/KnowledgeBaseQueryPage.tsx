@@ -6,7 +6,7 @@ import {Virtuoso, type VirtuosoHandle} from 'react-virtuoso';
 import {knowledgeBaseApi, type KnowledgeBaseItem, type SortOption} from '../api/knowledgebase';
 import {ragChatApi, type RagChatSessionListItem} from '../api/ragChat';
 import {formatDateOnly} from '../utils/date';
-import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
+import DeleteConfirmDialog from '../components/dialogs/DeleteConfirmDialog';
 import CodeBlock from '../components/CodeBlock';
 import {ChevronLeft, ChevronRight, Edit, MessageSquare, Pin, Plus, Trash2, Bot, UserCircle2,} from 'lucide-react';
 

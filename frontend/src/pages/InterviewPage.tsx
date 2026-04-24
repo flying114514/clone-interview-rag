@@ -1,10 +1,11 @@
 import {useEffect, useRef, useState} from 'react';
 import {interviewApi} from '../api/interview';
-import ConfirmDialog from '../components/ConfirmDialog';
+import ConfirmDialog from '../components/dialogs/ConfirmDialog';
 import InterviewConfigPanel from '../components/InterviewConfigPanel';
 import ChatArea from '../components/interview/ChatArea';
 import Sidebar from '../components/interview/Sidebar';
-import type {InterviewCreationTaskStatus, InterviewQuestion, InterviewSession} from '../types/interview';
+import VideoInterviewStage from '../components/interview/VideoInterviewStage';
+import type {InterviewCreationTaskStatus, InterviewMode, InterviewQuestion, InterviewSession, VideoInterviewConfig} from '../types/interview';
 import type {InterviewChatMessage} from '../types/interviewChat';
 
 type InterviewStage = 'config' | 'interview';
@@ -20,6 +21,12 @@ interface InterviewProps {
 export default function Interview({resumeText, resumeId, onBack, onInterviewComplete}: InterviewProps) {
   const [stage, setStage] = useState<InterviewStage>('config');
   const [questionCount, setQuestionCount] = useState(8);
+  const [mode, setMode] = useState<InterviewMode>('TEXT');
+  const [videoConfig, setVideoConfig] = useState<VideoInterviewConfig>({
+    maxFollowUps: 3,
+    videoEnabled: true,
+    audioEnabled: true,
+  });
   const [session, setSession] = useState<InterviewSession | null>(null);
   const [currentQuestion, setCurrentQuestion] = useState<InterviewQuestion | null>(null);
   const [messages, setMessages] = useState<InterviewChatMessage[]>([]);
@@ -37,6 +44,9 @@ export default function Interview({resumeText, resumeId, onBack, onInterviewComp
   const [collectingQuestion, setCollectingQuestion] = useState(false);
   const [collectHint, setCollectHint] = useState('');
   const [submittedQuestionIndexes, setSubmittedQuestionIndexes] = useState<Set<number>>(new Set());
+  const [videoInterviewStartedAt, setVideoInterviewStartedAt] = useState<number | null>(null);
+  const [videoInterviewElapsedSeconds, setVideoInterviewElapsedSeconds] = useState(0);
+  const [videoFinalizeRequestId, setVideoFinalizeRequestId] = useState(0);
 
   const buildSubmittedQuestionIndexes = (sessionData: InterviewSession): Set<number> => {
     const submitted = new Set<number>();
@@ -145,6 +155,40 @@ export default function Interview({resumeText, resumeId, onBack, onInterviewComp
     currentAnswerRef.current = answer.trim();
     isSubmittingRef.current = isSubmitting;
   }, [answer, currentQuestion, isSubmitting, session]);
+
+  useEffect(() => {
+    if (stage !== 'interview' || !session || (session.mode ?? mode) !== 'VIDEO') {
+      setVideoInterviewStartedAt(null);
+      setVideoInterviewElapsedSeconds(0);
+      return;
+    }
+
+    setVideoInterviewStartedAt(prev => prev ?? Date.now());
+  }, [mode, session, stage]);
+
+  useEffect(() => {
+    if (!videoInterviewStartedAt || stage !== 'interview' || !session || (session.mode ?? mode) !== 'VIDEO') {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      const elapsed = Math.floor((Date.now() - videoInterviewStartedAt) / 1000);
+      setVideoInterviewElapsedSeconds(elapsed);
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [mode, session, stage, videoInterviewStartedAt]);
+
+  useEffect(() => {
+    if (!session || (session.mode ?? mode) !== 'VIDEO') {
+      return;
+    }
+    if (videoInterviewElapsedSeconds < 1800 || isSubmitting) {
+      return;
+    }
+
+    void handleCompleteEarly();
+  }, [isSubmitting, mode, session, videoInterviewElapsedSeconds]);
 
   useEffect(() => {
     if (resumeId) {
@@ -258,9 +302,13 @@ export default function Interview({resumeText, resumeId, onBack, onInterviewComp
     try {
       const {taskId} = await interviewApi.createSessionTask({
         resumeText,
-        questionCount,
+        questionCount: mode === 'VIDEO' ? 4 : questionCount,
         resumeId,
-        forceCreate: forceCreateNew
+        forceCreate: forceCreateNew,
+        mode,
+        maxFollowUps: videoConfig.maxFollowUps,
+        videoEnabled: videoConfig.videoEnabled,
+        audioEnabled: videoConfig.audioEnabled,
       });
 
       let taskStatus: InterviewCreationTaskStatus | null = null;
@@ -452,6 +500,76 @@ export default function Interview({resumeText, resumeId, onBack, onInterviewComp
     }
   };
 
+  const handleSubmitVideoAnswer = async (result: import('../types/interview').UploadInterviewMediaResponse) => {
+    if (!session) throw new Error('面试会话不存在');
+
+    const questionIndex = result.questionIndex;
+    const answerText = result.currentRound?.transcript?.trim() ?? '';
+
+    if (result.sttProvider === 'deepgram-empty') {
+      setCollectHint('本轮语音未识别到有效内容，请靠近麦克风并重新作答当前题。');
+      return {
+        hasNextQuestion: true,
+        ended: false,
+        retryCurrent: true,
+        retryHint: '本轮未识别到有效语音，请靠近麦克风后重新回答当前题。'
+      };
+    }
+
+    setSubmittedQuestionIndexes(prev => {
+      const next = new Set(prev);
+      next.add(questionIndex);
+      return next;
+    });
+
+    if (result.decision.action === 'END' || !result.nextQuestion) {
+      setSession(prev => {
+        if (!prev || prev.sessionId !== session.sessionId) return prev;
+        return {
+          ...prev,
+          status: 'COMPLETED',
+          currentPrompt: null,
+          questions: prev.questions.map(question =>
+            question.questionIndex === questionIndex ? {...question, userAnswer: answerText} : question
+          ),
+        };
+      });
+      setCurrentQuestion(prev => (prev ? {...prev, userAnswer: answerText} : prev));
+      setCollectHint('本场视频面试已完成，系统将自动结束并生成报告');
+      return {hasNextQuestion: false, ended: true};
+    }
+
+    setSession(prev => {
+      if (!prev || prev.sessionId !== session.sessionId) return prev;
+
+      const existing = prev.questions.some(question => question.questionIndex === result.nextQuestion!.questionIndex);
+      const updatedAnswered = prev.questions.map(question =>
+        question.questionIndex === questionIndex ? {...question, userAnswer: answerText} : question
+      );
+      const answeredPosition = updatedAnswered.findIndex(question => question.questionIndex === questionIndex);
+      const updatedQuestions = existing
+        ? updatedAnswered.map(question =>
+            question.questionIndex === result.nextQuestion!.questionIndex ? result.nextQuestion! : question
+          )
+        : result.decision.action === 'FOLLOW_UP' && answeredPosition >= 0
+          ? [...updatedAnswered.slice(0, answeredPosition + 1), result.nextQuestion!, ...updatedAnswered.slice(answeredPosition + 1)]
+          : [...updatedAnswered, result.nextQuestion!];
+
+      return {
+        ...prev,
+        currentQuestionIndex: result.nextQuestion!.questionIndex,
+        status: 'IN_PROGRESS',
+        currentPrompt: result.nextPrompt ?? null,
+        questions: updatedQuestions,
+      };
+    });
+
+    setCurrentQuestion(result.nextQuestion);
+    setAnswer('');
+    setCollectHint(result.decision.action === 'FOLLOW_UP' ? 'AI 正在继续追问，请直接继续回答' : 'AI 将自动进入下一题');
+    return {hasNextQuestion: true, ended: false};
+  };
+
   const handleCollectQuestion = async () => {
     if (!session || !currentQuestion || collectingQuestion) return;
 
@@ -538,6 +656,11 @@ export default function Interview({resumeText, resumeId, onBack, onInterviewComp
     }
   };
 
+  const requestVideoFinalizeAndComplete = () => {
+    setShowCompleteConfirm(false);
+    setVideoFinalizeRequestId(prev => prev + 1);
+  };
+
   return (
     <div className="relative flex h-screen min-h-0 w-full flex-col overflow-hidden bg-[#07111f] text-white md:flex-row">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.14),transparent_38%),linear-gradient(180deg,#08111f_0%,#050b16_100%)]" />
@@ -549,6 +672,7 @@ export default function Interview({resumeText, resumeId, onBack, onInterviewComp
         session={session}
         currentQuestion={currentQuestion}
         onSelectQuestion={handleSelectQuestion}
+        disableQuestionSelection={stage === 'interview' && (session?.mode ?? mode) === 'VIDEO'}
       />
 
       <section className="relative flex min-h-0 min-w-0 flex-1 flex-col">
@@ -557,6 +681,10 @@ export default function Interview({resumeText, resumeId, onBack, onInterviewComp
             <InterviewConfigPanel
               questionCount={questionCount}
               onQuestionCountChange={setQuestionCount}
+              mode={mode}
+              onModeChange={setMode}
+              videoConfig={videoConfig}
+              onVideoConfigChange={setVideoConfig}
               onStart={startInterview}
               isCreating={isCreating}
               checkingUnfinished={checkingUnfinished}
@@ -568,6 +696,18 @@ export default function Interview({resumeText, resumeId, onBack, onInterviewComp
               error={error || creationStatusMessage}
             />
           </div>
+        ) : session && currentQuestion && (session.mode ?? mode) === 'VIDEO' ? (
+          <VideoInterviewStage
+            session={session}
+            resumeText={resumeText}
+            interviewElapsedSeconds={videoInterviewElapsedSeconds}
+            finalizeRequestId={videoFinalizeRequestId}
+            onBack={onBack}
+            onCompleteEarly={() => setShowCompleteConfirm(true)}
+            onAutoComplete={handleCompleteEarly}
+            completingEarly={isSubmitting}
+            onApplyUploadResult={handleSubmitVideoAnswer}
+          />
         ) : session && currentQuestion ? (
           <ChatArea
             session={session}
@@ -597,7 +737,7 @@ export default function Interview({resumeText, resumeId, onBack, onInterviewComp
         cancelText="取消"
         confirmVariant="warning"
         loading={isSubmitting}
-        onConfirm={handleCompleteEarly}
+        onConfirm={(session && (session.mode ?? mode) === 'VIDEO') ? requestVideoFinalizeAndComplete : handleCompleteEarly}
         onCancel={() => setShowCompleteConfirm(false)}
       />
     </div>

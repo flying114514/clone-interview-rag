@@ -46,6 +46,7 @@ public class AnswerEvaluationService {
     private final StructuredOutputInvoker structuredOutputInvoker;
     private final int evaluationBatchSize;
     private final boolean evaluationSummaryEnabled;
+    private final int scoreFriendlyBoost;
     
     // 中间DTO用于接收AI响应
     private record EvaluationReportDTO(
@@ -84,7 +85,8 @@ public class AnswerEvaluationService {
             @Value("classpath:prompts/interview-evaluation-summary-system.st") Resource summarySystemPromptResource,
             @Value("classpath:prompts/interview-evaluation-summary-user.st") Resource summaryUserPromptResource,
             @Value("${app.interview.evaluation.batch-size:8}") int evaluationBatchSize,
-            @Value("${app.interview.evaluation.summary-enabled:false}") boolean evaluationSummaryEnabled) throws IOException {
+            @Value("${app.interview.evaluation.summary-enabled:false}") boolean evaluationSummaryEnabled,
+            @Value("${app.interview.evaluation.score-friendly-boost:6}") int scoreFriendlyBoost) throws IOException {
         this.chatClient = chatClientBuilder.build();
         this.structuredOutputInvoker = structuredOutputInvoker;
         this.systemPromptTemplate = new PromptTemplate(systemPromptResource.getContentAsString(StandardCharsets.UTF_8));
@@ -95,6 +97,7 @@ public class AnswerEvaluationService {
         this.summaryOutputConverter = new BeanOutputConverter<>(FinalSummaryDTO.class);
         this.evaluationBatchSize = Math.max(1, evaluationBatchSize);
         this.evaluationSummaryEnabled = evaluationSummaryEnabled;
+        this.scoreFriendlyBoost = Math.max(0, Math.min(15, scoreFriendlyBoost));
     }
     
     /**
@@ -270,8 +273,8 @@ public class AnswerEvaluationService {
                 } else {
                     merged.add(new QuestionEvaluationDTO(
                         result.startIndex() + i,
-                        0,
-                        "该题未成功生成评估结果，系统按 0 分处理。",
+                        45,
+                        "该题评估结果缺失，系统已按“有回答的基础分”进行保底评分。",
                         "",
                         List.of()
                     ));
@@ -419,6 +422,22 @@ public class AnswerEvaluationService {
         return highlights.stream().limit(20).collect(Collectors.joining("\n"));
     }
     
+    private int applyFriendlyBoost(int rawScore, boolean hasAnswer) {
+        if (!hasAnswer) {
+            return 0;
+        }
+        int normalized = Math.max(0, rawScore);
+        // 仅在有实质回答时做温和抬升，避免模型保守导致“普遍偏低/近零分”
+        if (normalized > 0 && normalized < 45) {
+            normalized = 45;
+        }
+        if (normalized == 0) {
+            // 有回答但模型给到 0 时，给一个可区分的基础分，避免“全是零分”
+            normalized = 40;
+        }
+        return Math.min(100, normalized + scoreFriendlyBoost);
+    }
+
     /**
      * 转换DTO为业务对象
      */
@@ -460,7 +479,8 @@ public class AnswerEvaluationService {
 
             // 如果用户未回答该题，分数强制为 0
             boolean hasAnswer = q.userAnswer() != null && !q.userAnswer().isBlank();
-            int score = hasAnswer && eval != null ? eval.score() : 0;
+            int rawScore = hasAnswer && eval != null ? eval.score() : 0;
+            int score = applyFriendlyBoost(rawScore, hasAnswer);
 
             questionDetails.add(new QuestionEvaluation(
                 qIndex, q.question(), q.category(),

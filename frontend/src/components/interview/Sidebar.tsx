@@ -9,6 +9,7 @@ export interface SidebarProps {
   session: InterviewSession | null;
   currentQuestion: InterviewQuestion | null;
   onSelectQuestion?: (questionIndex: number) => void;
+  disableQuestionSelection?: boolean;
 }
 
 function truncate(text: string, max = 80) {
@@ -17,7 +18,48 @@ function truncate(text: string, max = 80) {
   return `${t.slice(0, max)}…`;
 }
 
-export default function Sidebar({stage, onBack, session, currentQuestion, onSelectQuestion}: SidebarProps) {
+function buildQuestionDisplayLabel(question: InterviewQuestion, allQuestions: InterviewQuestion[]): string {
+  const sorted = [...allQuestions].sort((a, b) => a.questionIndex - b.questionIndex);
+  const byIndex = new Map(sorted.map(item => [item.questionIndex, item]));
+
+  const resolveRootIndex = (item: InterviewQuestion) => {
+    let cursor: InterviewQuestion | undefined = item;
+    let guard = 0;
+    while (cursor?.isFollowUp && cursor.parentQuestionIndex != null && guard < 20) {
+      const parent = byIndex.get(cursor.parentQuestionIndex);
+      if (!parent) {
+        return cursor.parentQuestionIndex;
+      }
+      cursor = parent;
+      guard += 1;
+    }
+    return cursor?.questionIndex ?? item.parentQuestionIndex ?? item.questionIndex;
+  };
+
+  const rootIndex = resolveRootIndex(question);
+  const mainNo = sorted.filter(x => !x.isFollowUp && x.questionIndex <= rootIndex).length || 1;
+
+  if (!question.isFollowUp) {
+    return `主问题 ${mainNo}`;
+  }
+
+  const followNo = sorted.filter(x => x.isFollowUp && resolveRootIndex(x) === rootIndex && x.questionIndex <= question.questionIndex).length || 1;
+
+  return `主问题 ${mainNo} · 追问 ${followNo}`;
+}
+
+export default function Sidebar({
+  stage,
+  onBack,
+  session,
+  currentQuestion,
+  onSelectQuestion,
+  disableQuestionSelection = false,
+}: SidebarProps) {
+  const visibleQuestions = session?.questions.filter(
+    q => q.questionIndex === currentQuestion?.questionIndex || Boolean(q.userAnswer?.trim())
+  ) ?? [];
+
   return (
     <aside className="relative z-10 flex w-full shrink-0 flex-col border-b border-white/10 bg-black/22 backdrop-blur-[22px] md:h-full md:w-[min(100%,280px)] md:border-b-0 md:border-r">
       <div className="flex items-center gap-2 px-3 py-4 md:px-4">
@@ -37,7 +79,7 @@ export default function Sidebar({stage, onBack, session, currentQuestion, onSele
             <div className="min-w-0">
               <p className="truncate text-[15px] font-bold text-white">模拟面试</p>
               <p className="truncate text-[13px] text-white/54">
-                {stage === 'config' ? '准备开始' : '会话进行中（可切题）'}
+                {stage === 'config' ? '准备开始' : disableQuestionSelection ? '会话进行中（按顺序作答）' : '会话进行中（可切题）'}
               </p>
             </div>
           </div>
@@ -56,7 +98,7 @@ export default function Sidebar({stage, onBack, session, currentQuestion, onSele
           </div>
           <nav className="scrollbar-ds flex-1 overflow-y-auto px-2 pb-4">
             <ul className="space-y-1">
-              {session.questions.map((q, idx) => {
+              {visibleQuestions.map(q => {
                 const isCurrent = q.questionIndex === currentQuestion.questionIndex;
                 const answered = Boolean(q.userAnswer?.trim());
 
@@ -65,16 +107,19 @@ export default function Sidebar({stage, onBack, session, currentQuestion, onSele
                     <button
                       type="button"
                       onClick={() => onSelectQuestion?.(q.questionIndex)}
+                      disabled={disableQuestionSelection}
                       className={`w-full rounded-2xl px-3 py-2.5 text-left transition ${
                         isCurrent
                           ? 'border border-white/12 bg-white/[0.07] shadow-[0_12px_28px_rgba(2,6,23,0.22)]'
-                          : 'hover:bg-white/[0.04]'
-                      }`}
+                          : disableQuestionSelection
+                            ? 'opacity-90'
+                            : 'hover:bg-white/[0.04]'
+                      } ${disableQuestionSelection ? 'cursor-not-allowed' : ''}`}
                     >
                       <div className="mb-1 flex items-center justify-between gap-2">
                         <span className="flex items-center gap-1.5 text-[13px] font-semibold text-white/88">
                           <ListOrdered className="h-3.5 w-3.5 text-white/44" />
-                          第 {idx + 1} 题
+                          {buildQuestionDisplayLabel(q, session.questions)}
                         </span>
                         <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-white/56">
                           {answered ? (

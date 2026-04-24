@@ -2,7 +2,7 @@ import {useEffect, useMemo, useRef, useState} from 'react';
 import {useLocation, useNavigate} from 'react-router-dom';
 import {AnimatePresence, motion} from 'framer-motion';
 import {historyApi, type AnalyzeStatus, type ResumeListItem} from '../api/history';
-import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
+import DeleteConfirmDialog from '../components/dialogs/DeleteConfirmDialog';
 import {formatDateOnly} from '../utils/date';
 import {getScoreProgressColor} from '../utils/score';
 import {toast} from 'sonner';

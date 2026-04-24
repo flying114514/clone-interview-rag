@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { EvaluateStatus, historyApi, InterviewItem } from '../api/history';
 import { formatDate } from '../utils/date';
-import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
+import DeleteConfirmDialog from '../components/dialogs/DeleteConfirmDialog';
 import { AlertCircle, CheckCircle, ChevronRight, Clock, Download, FileText, Loader2, PlayCircle, RefreshCw, Search, Trash2, TrendingUp, Users } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -60,6 +60,7 @@ export default function InterviewHistoryPage({ onBack: _onBack, onViewInterview,
   const [searchTerm, setSearchTerm] = useState('');
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
   const [deleteItem, setDeleteItem] = useState<InterviewWithResume | null>(null);
+  const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(new Set());
   const [exporting, setExporting] = useState<string | null>(null);
   const pollingRef = useRef<number | null>(null);
 
@@ -74,6 +75,10 @@ export default function InterviewHistoryPage({ onBack: _onBack, onViewInterview,
       }
       all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       setInterviews(all);
+      setSelectedSessionIds(prev => {
+        const allowed = new Set(all.map(item => item.sessionId));
+        return new Set([...prev].filter(id => allowed.has(id)));
+      });
       const evaluated = all.filter(isEvaluateCompleted);
       const total = evaluated.reduce((s, i) => s + (i.overallScore || 0), 0);
       setStats({ totalCount: all.length, completedCount: evaluated.length, averageScore: evaluated.length ? Math.round(total / evaluated.length) : 0 });
@@ -109,6 +114,47 @@ export default function InterviewHistoryPage({ onBack: _onBack, onViewInterview,
   };
 
   const list = interviews.filter(i => i.resumeFilename.toLowerCase().includes(searchTerm.toLowerCase()));
+  const allVisibleSelected = list.length > 0 && list.every(i => selectedSessionIds.has(i.sessionId));
+
+  const toggleSelectAllVisible = () => {
+    setSelectedSessionIds(prev => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        list.forEach(item => next.delete(item.sessionId));
+      } else {
+        list.forEach(item => next.add(item.sessionId));
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectOne = (sessionId: string) => {
+    setSelectedSessionIds(prev => {
+      const next = new Set(prev);
+      if (next.has(sessionId)) next.delete(sessionId);
+      else next.add(sessionId);
+      return next;
+    });
+  };
+
+  const handleBatchDelete = async () => {
+    const ids = [...selectedSessionIds];
+    if (ids.length === 0) return;
+    if (!window.confirm(`确定删除选中的 ${ids.length} 条面试记录吗？`)) return;
+
+    setDeletingSessionId('BATCH');
+    try {
+      for (const id of ids) {
+        await historyApi.deleteInterview(id);
+      }
+      setSelectedSessionIds(new Set());
+      await loadAllInterviews();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : '批量删除失败，请稍后重试');
+    } finally {
+      setDeletingSessionId(null);
+    }
+  };
 
   return (
     <motion.div className="w-full" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
@@ -122,6 +168,16 @@ export default function InterviewHistoryPage({ onBack: _onBack, onViewInterview,
           <Search className="h-5 w-5 text-white/55" strokeWidth={1.8} />
           <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="搜索简历名称..." className="flex-1 bg-transparent text-[15px] text-white outline-none placeholder:text-white/40" />
         </motion.div>
+        {selectedSessionIds.size > 0 ? (
+          <button
+            onClick={handleBatchDelete}
+            disabled={deletingSessionId !== null}
+            className="inline-flex items-center gap-2 rounded-full border border-rose-300/35 bg-rose-400/15 px-4 py-2 text-sm font-bold text-rose-100 disabled:opacity-50"
+          >
+            <Trash2 className="h-4 w-4" />
+            批量删除（{selectedSessionIds.size}）
+          </button>
+        ) : null}
       </div>
 
       {stats ? <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-5"><StatCard icon={Users} label="面试总数" value={stats.totalCount} /><StatCard icon={CheckCircle} label="已完成" value={stats.completedCount} /><StatCard icon={TrendingUp} label="平均分数" value={stats.averageScore} suffix="分" /></div> : null}
@@ -134,11 +190,12 @@ export default function InterviewHistoryPage({ onBack: _onBack, onViewInterview,
       {!loading && list.length > 0 ? (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="overflow-hidden rounded-[22px] border border-white/12 bg-white/[0.05] shadow-[0_18px_60px_rgba(2,6,23,0.52)] backdrop-blur-[20px]">
           <table className="w-full">
-            <thead className="border-b border-white/10 bg-white/[0.06]"><tr><th className="px-6 py-4 text-left text-[11px] tracking-[0.14em] text-white/58">关联简历</th><th className="px-6 py-4 text-left text-[11px] tracking-[0.14em] text-white/58">题目数</th><th className="px-6 py-4 text-left text-[11px] tracking-[0.14em] text-white/58">状态</th><th className="px-6 py-4 text-left text-[11px] tracking-[0.14em] text-white/58">得分</th><th className="px-6 py-4 text-left text-[11px] tracking-[0.14em] text-white/58">创建时间</th><th className="px-6 py-4 text-right text-[11px] tracking-[0.14em] text-white/58">操作</th></tr></thead>
+            <thead className="border-b border-white/10 bg-white/[0.06]"><tr><th className="px-4 py-4 text-left"><input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAllVisible} /></th><th className="px-6 py-4 text-left text-[11px] tracking-[0.14em] text-white/58">关联简历</th><th className="px-6 py-4 text-left text-[11px] tracking-[0.14em] text-white/58">题目数</th><th className="px-6 py-4 text-left text-[11px] tracking-[0.14em] text-white/58">状态</th><th className="px-6 py-4 text-left text-[11px] tracking-[0.14em] text-white/58">得分</th><th className="px-6 py-4 text-left text-[11px] tracking-[0.14em] text-white/58">创建时间</th><th className="px-6 py-4 text-right text-[11px] tracking-[0.14em] text-white/58">操作</th></tr></thead>
             <tbody>
               <AnimatePresence>
                 {list.map((i, idx) => (
                   <motion.tr key={i.sessionId} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.05 }} onClick={() => onViewInterview(i.sessionId, i.resumeId)} className="group cursor-pointer border-b border-white/8 hover:bg-white/[0.05]">
+                    <td className="px-4 py-4" onClick={e => e.stopPropagation()}><input type="checkbox" checked={selectedSessionIds.has(i.sessionId)} onChange={() => toggleSelectOne(i.sessionId)} /></td>
                     <td className="px-6 py-4"><div className="flex items-center gap-3"><FileText className="h-5 w-5 text-white/55" strokeWidth={1.8} /><div><p className="font-medium text-white">{i.resumeFilename}</p><p className="text-xs text-white/45">#{i.sessionId.slice(-8)}</p></div></div></td>
                     <td className="px-6 py-4"><span className="inline-flex rounded-full border border-white/14 bg-white/[0.04] px-2.5 py-1 text-sm text-white/72">{i.totalQuestions} 题</span></td>
                     <td className="px-6 py-4"><div className="flex items-center gap-2"><StatusIcon interview={i} /><span className="text-sm text-white/72">{getStatusText(i)}</span></div></td>

@@ -15,6 +15,8 @@ springdoc:
   packages-to-scan: interview.guide.modules
 
 spring:
+  config:
+    import: optional:file:.env[.properties],optional:file:../.env[.properties]
   application:
     name: ai-interview-platform
 
@@ -28,7 +30,6 @@ spring:
   datasource:
     url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:interview_guide}
     username: ${POSTGRES_USER:postgres}
-    # docker-compose.dev.yml 默认为 123456；根目录 docker-compose.yml 中 postgres 为 password，请用环境变量 POSTGRES_PASSWORD 与当前数据库一致
     password: ${POSTGRES_PASSWORD:123456}
     driver-class-name: org.postgresql.Driver
 
@@ -44,8 +45,8 @@ spring:
   servlet:
     multipart:
       enabled: true
-      max-file-size: 50MB  # 支持知识库上传（简历限制在业务层检查）
-      max-request-size: 50MB
+      max-file-size: -1
+      max-request-size: -1
   
 
   # Redisson配置 (使用 spring.redis.redisson，参考官方文档)
@@ -60,14 +61,19 @@ spring:
           subscriptionConnectionMinimumIdleSize: 1
           subscriptionConnectionPoolSize: 50
   
-  # Spring AI - 阿里云DashScope (OpenAI兼容模式)
+  # Spring AI - OpenAI 兼容接口（可切换 Gemini / DashScope 等）
   ai:
     openai:
-      base-url: https://dashscope.aliyuncs.com/compatible-mode
-      api-key: ${AI_BAILIAN_API_KEY}
+      # Gemini OpenAI 兼容端点示例：
+      # https://generativelanguage.googleapis.com/v1beta/openai
+      # 如需切回百炼：设置 AI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode
+      base-url: ${AI_BASE_URL:https://generativelanguage.googleapis.com/v1beta/openai}
+      # 优先读取通用 AI_API_KEY，其次 Gemini Key，最后回退百炼 Key
+      api-key: ${AI_API_KEY:${AI_GEMINI_API_KEY:${AI_BAILIAN_API_KEY:}}}
       chat:
         options:
-          model: ${AI_MODEL:qwen-plus}
+          # Gemini 默认模型（更稳的在线可用版本）
+          model: ${AI_MODEL:gemini-2.0-flash}
           temperature: 0.2
       # Embedding模型配置 - 使用text-embedding-v3
       embedding:
@@ -88,15 +94,13 @@ spring:
 
 # Application custom configuration
 app:
-  jwt:
-    # HS256 密钥长度建议 ≥ 256 bit；生产环境务必通过环境变量覆盖
-    secret: ${JWT_SECRET:dev-jwt-secret-change-me-in-production-32chars-min!!}
-    expiration-ms: ${JWT_EXPIRATION_MS:604800000}
   ai:
     # 结构化输出重试次数（用于 BeanOutputConverter 解析失败时的业务层重试）
     structured-max-attempts: ${APP_AI_STRUCTURED_MAX_ATTEMPTS:2}
     # 重试时是否将上次错误原因注入提示词，帮助模型定向修复输出
     structured-include-last-error: ${APP_AI_STRUCTURED_INCLUDE_LAST_ERROR:true}
+    fallback:
+      openrouter-enabled: ${APP_AI_FALLBACK_OPENROUTER_ENABLED:true}
     rag:
       rewrite:
         enabled: ${APP_AI_RAG_REWRITE_ENABLED:true}
@@ -109,24 +113,37 @@ app:
         min-score-default: ${APP_AI_RAG_MIN_SCORE_DEFAULT:0.28}
   interview:
     follow-up-count: ${APP_INTERVIEW_FOLLOW_UP_COUNT:1}
+    media:
+      transcription-enabled: ${APP_INTERVIEW_MEDIA_TRANSCRIPTION_ENABLED:true}
+      transcription-provider: ${APP_INTERVIEW_MEDIA_TRANSCRIPTION_PROVIDER:deepgram}
+      transcription-url: ${APP_INTERVIEW_MEDIA_TRANSCRIPTION_URL:https://api.deepgram.com/v1/listen}
+      transcription-model: ${APP_INTERVIEW_MEDIA_TRANSCRIPTION_MODEL:nova-2}
+      transcription-api-key: ${APP_INTERVIEW_MEDIA_TRANSCRIPTION_API_KEY:}
+      transcript-refinement-enabled: ${APP_INTERVIEW_MEDIA_TRANSCRIPT_REFINEMENT_ENABLED:true}
+      realtime-allow-direct-key-fallback: ${APP_INTERVIEW_MEDIA_REALTIME_ALLOW_DIRECT_KEY_FALLBACK:false}
+      tts-enabled: ${APP_INTERVIEW_MEDIA_TTS_ENABLED:true}
+      tts-provider: ${APP_INTERVIEW_MEDIA_TTS_PROVIDER:deepgram}
+      tts-url: ${APP_INTERVIEW_MEDIA_TTS_URL:https://api.deepgram.com/v1/speak}
+      tts-api-key: ${APP_INTERVIEW_MEDIA_TTS_API_KEY:}
+      tts-voice-id: ${APP_INTERVIEW_MEDIA_TTS_VOICE_ID:aura-orion-en}
+      tts-voice-id-zh: ${APP_INTERVIEW_MEDIA_TTS_VOICE_ID_ZH:aura-orion-en}
+      tts-language-zh: ${APP_INTERVIEW_MEDIA_TTS_LANGUAGE_ZH:zh-CN}
     evaluation:
       batch-size: ${APP_INTERVIEW_EVALUATION_BATCH_SIZE:8}
+      score-friendly-boost: ${APP_INTERVIEW_EVALUATION_SCORE_FRIENDLY_BOOST:6}
   resume:
-    upload-dir: ${java.io.tmpdir}/ai-interview/resumes
+    upload-dir: ${APP_RESUME_UPLOAD_DIR:./data/uploads}
     allowed-types:
       - application/pdf
       - application/msword
       - application/vnd.openxmlformats-officedocument.wordprocessingml.document
       - text/plain
-
-  # RustFS（S3 兼容）对象存储：本地开发见 docker-compose.dev.yml；元数据在 PostgreSQL，对象在存储桶
   storage:
     endpoint: ${APP_STORAGE_ENDPOINT:http://localhost:9000}
-    access-key: ${APP_STORAGE_ACCESS_KEY:hxQyeWTlFlOA0C742F0O}
-    secret-key: ${APP_STORAGE_SECRET_KEY:tGHkUWE9wRHYbgsmB21itHfJNRT466CSriyXx50p}
+    access-key: ${APP_STORAGE_ACCESS_KEY:rustfsadmin}
+    secret-key: ${APP_STORAGE_SECRET_KEY:rustfsadmin}
     bucket: ${APP_STORAGE_BUCKET:interview-guide}
     region: ${APP_STORAGE_REGION:us-east-1}
-  
-  # CORS配置 - React前端
+
   cors:
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174,http://localhost:80}
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174,http://localhost:80,https://www.nailong88.online,https://nailong88.online}

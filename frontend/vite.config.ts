@@ -27,6 +27,13 @@ export default defineConfig({
         timeout: 420000,
         proxyTimeout: 420000,
       },
+      '/ws': {
+        target: 'ws://localhost:8080',
+        changeOrigin: true,
+        ws: true,
+        timeout: 420000,
+        proxyTimeout: 420000,
+      },
     },
   },
 });

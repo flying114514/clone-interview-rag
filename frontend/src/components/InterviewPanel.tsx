@@ -5,7 +5,7 @@ import {formatDateOnly} from '../utils/date';
 import {getScoreColor} from '../utils/score';
 import type {InterviewItem} from '../api/history';
 import {historyApi} from '../api/history';
-import ConfirmDialog from './ConfirmDialog';
+import ConfirmDialog from './dialogs/ConfirmDialog';
 import {Calendar, ChevronRight, Download, MessageSquare, Mic, Trash2, TrendingUp} from 'lucide-react';
 
 interface InterviewPanelProps {

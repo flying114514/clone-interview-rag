@@ -1,4 +1,5 @@
 import { request } from './request';
+import { AUTH_TOKEN_KEY } from '../authStorage';
 import type {
   CollectInterviewQuestionResponse,
   CreateInterviewRequest,
@@ -8,7 +9,10 @@ import type {
   InterviewReport,
   InterviewSession,
   SubmitAnswerRequest,
-  SubmitAnswerResponse
+  SubmitAnswerResponse,
+  UploadCompleteInterviewResponse,
+  UploadInterviewMediaResponse,
+  RealtimeTranscriptionConfig
 } from '../types/interview';
 
 export const interviewApi = {
@@ -113,5 +117,46 @@ export const interviewApi = {
    */
   async uncollectQuestion(sessionId: string, questionIndex: number): Promise<CollectInterviewQuestionResponse> {
     return request.delete<CollectInterviewQuestionResponse>(`/api/interview/sessions/${sessionId}/collect?questionIndex=${questionIndex}`);
+  },
+
+  async getRealtimeConfig(): Promise<RealtimeTranscriptionConfig> {
+    return request.post<RealtimeTranscriptionConfig>('/api/interview/realtime-config');
+  },
+
+  buildRealtimeProxyWebSocketUrl(config: RealtimeTranscriptionConfig): string {
+    const token = localStorage.getItem(AUTH_TOKEN_KEY) ?? '';
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host;
+    const params = new URLSearchParams({
+      token,
+      model: config.model,
+      language: config.language,
+      interim_results: String(config.interimResults),
+      smart_format: String(config.smartFormat),
+    });
+    if (config.endpointingMs != null) params.set('endpointing', String(config.endpointingMs));
+    if (config.utteranceEndMs != null) params.set('utterance_end_ms', String(config.utteranceEndMs));
+    return `${protocol}//${host}${config.wsUrl}?${params.toString()}`;
+  },
+
+  async uploadMedia(sessionId: string, questionIndex: number, file: Blob, filename?: string, transcript?: string): Promise<UploadInterviewMediaResponse> {
+    const formData = new FormData();
+    formData.append('file', file, filename ?? `interview-${sessionId}-${questionIndex}.webm`);
+    formData.append('questionIndex', String(questionIndex));
+    if (transcript && transcript.trim()) {
+      formData.append('transcript', transcript.trim());
+    }
+    return request.upload<UploadInterviewMediaResponse>(`/api/interview/sessions/${sessionId}/media`, formData, {
+      timeout: 180000,
+    });
+  },
+
+  /**
+   * 上传完整面试视频
+   */
+  async uploadCompleteInterview(sessionId: string, formData: FormData): Promise<UploadCompleteInterviewResponse> {
+    return request.upload<UploadCompleteInterviewResponse>(`/api/interview/sessions/${sessionId}/complete-video`, formData, {
+      timeout: 300000, // 5分钟超时
+    });
   },
 };

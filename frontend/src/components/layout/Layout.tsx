@@ -11,7 +11,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useEffect, useMemo, useState } from 'react';
-import { clearAuthSession } from '../api/auth';
+import { clearAuthSession } from '../../api/auth';
 
 interface NavItem {
   id: string;

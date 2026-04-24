@@ -46,6 +46,14 @@ public class InterviewHistoryService {
         List<String> strengths = parseJson(session.getStrengthsJson(), new TypeReference<>() {});
         List<String> improvements = parseJson(session.getImprovementsJson(), new TypeReference<>() {});
         List<Object> referenceAnswers = parseJson(session.getReferenceAnswersJson(), new TypeReference<>() {});
+        List<InterviewDetailDTO.ConversationLogEntryDTO> conversationLog = parseJson(
+            session.getConversationLogJson(),
+            new TypeReference<>() {}
+        );
+        InterviewDetailDTO.VideoAnalysisDTO videoAnalysis = parseJson(
+            session.getVideoAnalysisJson(),
+            new TypeReference<>() {}
+        );
 
         // 解析所有题目（用于构建完整的答案列表）
         List<InterviewQuestionDTO> allQuestions = parseJson(
@@ -67,6 +75,8 @@ public class InterviewHistoryService {
             strengths,
             improvements,
             referenceAnswers,
+            conversationLog,
+            videoAnalysis,
             answerList
         );
     }

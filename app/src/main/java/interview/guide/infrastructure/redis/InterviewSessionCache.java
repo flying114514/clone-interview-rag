@@ -53,18 +53,27 @@ public class InterviewSessionCache {
         private String questionsJson;  // 序列化的问题列表
         private int currentIndex;
         private SessionStatus status;
+        private String mode;
+        private Integer maxFollowUps;
+        private Boolean videoEnabled;
+        private Boolean audioEnabled;
 
         public CachedSession() {
         }
 
         public CachedSession(String sessionId, String resumeText, Long resumeId,
                             List<InterviewQuestionDTO> questions, int currentIndex,
-                            SessionStatus status, ObjectMapper objectMapper) {
+                            SessionStatus status, String mode, Integer maxFollowUps,
+                            Boolean videoEnabled, Boolean audioEnabled, ObjectMapper objectMapper) {
             this.sessionId = sessionId;
             this.resumeText = resumeText;
             this.resumeId = resumeId;
             this.currentIndex = currentIndex;
             this.status = status;
+            this.mode = mode;
+            this.maxFollowUps = maxFollowUps;
+            this.videoEnabled = videoEnabled;
+            this.audioEnabled = audioEnabled;
             try {
                 this.questionsJson = objectMapper.writeValueAsString(questions);
             } catch (JacksonException e) {
@@ -87,9 +96,17 @@ public class InterviewSessionCache {
     public void saveSession(String sessionId, String resumeText, Long resumeId,
                            List<InterviewQuestionDTO> questions, int currentIndex,
                            SessionStatus status) {
+        saveSession(sessionId, resumeText, resumeId, questions, currentIndex, status, "TEXT", 1, false, true);
+    }
+
+    public void saveSession(String sessionId, String resumeText, Long resumeId,
+                           List<InterviewQuestionDTO> questions, int currentIndex,
+                           SessionStatus status, String mode, Integer maxFollowUps,
+                           Boolean videoEnabled, Boolean audioEnabled) {
         String key = buildSessionKey(sessionId);
         CachedSession cachedSession = new CachedSession(
-            sessionId, resumeText, resumeId, questions, currentIndex, status, objectMapper
+            sessionId, resumeText, resumeId, questions, currentIndex, status,
+            mode, maxFollowUps, videoEnabled, audioEnabled, objectMapper
         );
 
         redisService.set(key, cachedSession, SESSION_TTL);
@@ -99,7 +116,7 @@ public class InterviewSessionCache {
             saveResumeSessionMapping(resumeId, sessionId);
         }
 
-        log.debug("会话已缓存: sessionId={}, resumeId={}, status={}", sessionId, resumeId, status);
+        log.debug("会话已缓存: sessionId={}, resumeId={}, status={}, mode={}", sessionId, resumeId, status, mode);
     }
 
     /**
@@ -107,10 +124,15 @@ public class InterviewSessionCache {
      */
     public Optional<CachedSession> getSession(String sessionId) {
         String key = buildSessionKey(sessionId);
-        CachedSession session = redisService.get(key);
-        if (session != null) {
-            log.debug("从缓存获取会话: sessionId={}", sessionId);
-            return Optional.of(session);
+        try {
+            CachedSession session = redisService.get(key);
+            if (session != null) {
+                log.debug("从缓存获取会话: sessionId={}", sessionId);
+                return Optional.of(session);
+            }
+        } catch (Exception e) {
+            log.warn("读取会话缓存失败，已清理脏缓存: sessionId={}, error={}", sessionId, e.getMessage());
+            redisService.delete(key);
         }
         return Optional.empty();
     }
@@ -181,16 +203,18 @@ public class InterviewSessionCache {
      */
     public Optional<String> findUnfinishedSessionId(Long resumeId) {
         String key = buildResumeSessionKey(resumeId);
-        String sessionId = redisService.get(key);
-        if (sessionId != null) {
-            // 验证会话是否仍然存在且未完成
-            Optional<CachedSession> sessionOpt = getSession(sessionId);
-            if (sessionOpt.isPresent() && isUnfinishedStatus(sessionOpt.get().getStatus())) {
-                return Optional.of(sessionId);
-            } else {
-                // 会话已不存在或已完成，清理映射
+        try {
+            String sessionId = redisService.get(key);
+            if (sessionId != null) {
+                Optional<CachedSession> sessionOpt = getSession(sessionId);
+                if (sessionOpt.isPresent() && isUnfinishedStatus(sessionOpt.get().getStatus())) {
+                    return Optional.of(sessionId);
+                }
                 redisService.delete(key);
             }
+        } catch (Exception e) {
+            log.warn("读取未完成会话映射失败，已清理脏映射: resumeId={}, error={}", resumeId, e.getMessage());
+            redisService.delete(key);
         }
         return Optional.empty();
     }

@@ -2,13 +2,16 @@ package interview.guide.modules.interview;
 
 import interview.guide.common.annotation.RateLimit;
 import interview.guide.common.result.Result;
+import interview.guide.infrastructure.file.FileStorageService;
 import interview.guide.infrastructure.security.SecurityUtils;
 import interview.guide.modules.interview.model.*;
 import interview.guide.modules.interview.service.InterviewCreationTaskService;
 import interview.guide.modules.interview.service.InterviewHistoryService;
+import interview.guide.modules.interview.service.InterviewMediaAnalysisService;
 import interview.guide.modules.interview.service.InterviewPersistenceService;
 import interview.guide.modules.interview.service.InterviewQuestionCollectionService;
 import interview.guide.modules.interview.service.InterviewSessionService;
+import interview.guide.modules.interview.service.CompleteInterviewVideoService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -16,6 +19,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -36,6 +40,9 @@ public class InterviewController {
     private final InterviewHistoryService historyService;
     private final InterviewPersistenceService persistenceService;
     private final InterviewQuestionCollectionService collectionService;
+    private final InterviewMediaAnalysisService interviewMediaAnalysisService;
+    private final FileStorageService fileStorageService;
+    private final CompleteInterviewVideoService completeInterviewVideoService;
     
     /**
      * 创建面试异步任务
@@ -168,6 +175,43 @@ public class InterviewController {
     }
 
     /**
+     * 上传视频面试录制媒体
+     */
+    @PostMapping(value = "/api/interview/sessions/{sessionId}/media", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Result<UploadInterviewMediaResponse> uploadInterviewMedia(
+            @PathVariable String sessionId,
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("questionIndex") Integer questionIndex,
+            @RequestParam(value = "transcript", required = false) String transcript) {
+        log.info("上传视频面试媒体: sessionId={}, questionIndex={}, fileName={}, size={}",
+                sessionId, questionIndex, file.getOriginalFilename(), file.getSize());
+        String fileKey = fileStorageService.uploadInterviewMedia(file);
+        String fileUrl = fileStorageService.getFileUrl(fileKey);
+        ProcessInterviewMediaResult processResult = interviewMediaAnalysisService.processUploadedRound(
+                sessionId,
+                questionIndex,
+                file,
+                fileKey,
+                fileUrl,
+                transcript
+        );
+        return Result.success(new UploadInterviewMediaResponse(
+                sessionId,
+                questionIndex,
+                fileKey,
+                fileUrl,
+                file.getContentType(),
+                file.getSize(),
+                "上传成功",
+                processResult.currentRound(),
+                processResult.decision(),
+                processResult.nextQuestion(),
+                processResult.nextPrompt(),
+                processResult.sttProvider()
+        ));
+    }
+
+    /**
      * 获取面试会话详情
      * GET /api/interview/sessions/{sessionId}/details
      */
@@ -205,5 +249,46 @@ public class InterviewController {
         log.info("删除面试会话: {}", sessionId);
         persistenceService.deleteSessionBySessionIdForUser(sessionId, SecurityUtils.requireUserId());
         return Result.success(null);
+    }
+
+    /**
+     * 上传完整面试视频并分析
+     */
+    @PostMapping(value = "/api/interview/sessions/{sessionId}/complete-video", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Result<UploadCompleteInterviewResponse> uploadCompleteInterview(
+            @PathVariable String sessionId,
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("transcripts") String transcriptsJson,
+            @RequestParam("conversationLog") String conversationLogJson,
+            @RequestParam(value = "durationSeconds", required = false) Integer durationSeconds) {
+        log.info("上传完整面试视频: sessionId={}, fileName={}, size={}",
+                sessionId, file.getOriginalFilename(), file.getSize());
+
+        try {
+            tools.jackson.databind.ObjectMapper objectMapper = new tools.jackson.databind.ObjectMapper();
+            java.util.List<String> transcripts = objectMapper.readValue(
+                transcriptsJson,
+                new tools.jackson.core.type.TypeReference<java.util.List<String>>() {}
+            );
+            java.util.List<UploadCompleteInterviewRequest.ConversationLogEntry> conversationLog = objectMapper.readValue(
+                conversationLogJson,
+                new tools.jackson.core.type.TypeReference<java.util.List<UploadCompleteInterviewRequest.ConversationLogEntry>>() {}
+            );
+
+            UploadCompleteInterviewResponse response = completeInterviewVideoService.uploadAndAnalyze(
+                sessionId,
+                file,
+                transcripts,
+                conversationLog,
+                durationSeconds
+            );
+            return Result.success(response);
+        } catch (Exception e) {
+            log.error("上传完整面试视频失败", e);
+            throw new interview.guide.common.exception.BusinessException(
+                interview.guide.common.exception.ErrorCode.BAD_REQUEST,
+                "上传失败: " + e.getMessage()
+            );
+        }
     }
 }

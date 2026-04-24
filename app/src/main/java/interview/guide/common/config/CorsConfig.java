@@ -19,22 +19,27 @@ public class CorsConfig {
     @Value("${app.cors.allowed-origins:https://www.nailong88.online}")
     private String allowedOrigins;
 
+    public String[] allowedOriginsArray() {
+        return Arrays.stream(allowedOrigins.split(","))
+            .map(String::trim)
+            .filter(origin -> !origin.isBlank())
+            .toArray(String[]::new);
+    }
+
     @Bean
     public CorsFilter corsFilter() {
         CorsConfiguration config = new CorsConfiguration();
-        
-        Arrays.stream(allowedOrigins.split(","))
-              .map(String::trim)
-              .forEach(config::addAllowedOrigin);
-        
+
+        Arrays.stream(allowedOriginsArray()).forEach(config::addAllowedOrigin);
+
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);
         config.setMaxAge(3600L);
-        
+
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/api/**", config);
-        
+
         return new CorsFilter(source);
     }
 }

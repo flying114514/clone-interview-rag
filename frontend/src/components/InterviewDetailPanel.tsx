@@ -1,7 +1,8 @@
 import {useMemo, useState} from 'react';
 import {AnimatePresence, motion} from 'framer-motion';
+import {Brain, Camera, MessageSquareText, ShieldCheck, Video} from 'lucide-react';
 import {getScoreColor} from '../utils/score';
-import type {InterviewDetail} from '../api/history';
+import type {AnswerItem, InterviewDetail} from '../api/history';
 
 interface InterviewDetailPanelProps {
   interview: InterviewDetail;
@@ -63,6 +64,11 @@ export default function InterviewDetailPanel({ interview }: InterviewDetailPanel
       {/* 改进建议 */}
       {interview.improvements && interview.improvements.length > 0 && (
         <ImprovementsSection improvements={interview.improvements} />
+      )}
+
+      {/* 视频面试扩展分析 */}
+      {(interview.videoAnalysis || interview.completeVideoFileUrl || interview.conversationLog?.length) && (
+        <VideoInterviewInsightsSection interview={interview} />
       )}
 
       {/* 问答记录详情 */}
@@ -187,13 +193,128 @@ function ImprovementsSection({ improvements }: { improvements: string[] }) {
   );
 }
 
+function VideoInterviewInsightsSection({ interview }: { interview: InterviewDetail }) {
+  const metrics = [
+    { label: '表情表现', value: interview.videoAnalysis?.overallExpressionScore ?? null, icon: Camera },
+    { label: '肢体姿态', value: interview.videoAnalysis?.overallGestureScore ?? null, icon: Video },
+    { label: '自信程度', value: interview.videoAnalysis?.overallConfidenceScore ?? null, icon: ShieldCheck },
+  ];
+
+  return (
+    <motion.div
+      className="rounded-card border border-ds-border bg-ds-bg p-6 shadow-ds-sm dark:border-neutral-800 dark:bg-neutral-950"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.25 }}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h4 className="mb-2 flex items-center gap-2 font-bold text-ds-fg dark:text-neutral-100">
+            <Brain className="h-5 w-5 text-ds-accent" />
+            视频面试扩展分析
+          </h4>
+          <p className="text-sm leading-6 text-ds-fg-muted dark:text-neutral-400">
+            展示整场视频面试的多模态分析结果，包括表情、姿态、自信度及对话记录。
+          </p>
+        </div>
+        {interview.completeVideoFileUrl ? (
+          <a
+            href={interview.completeVideoFileUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 rounded-pill border border-ds-border-strong bg-ds-bg-subtle px-4 py-2 text-sm font-bold text-ds-fg transition hover:opacity-90 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+          >
+            <Video className="h-4 w-4" />
+            查看完整视频
+          </a>
+        ) : null}
+      </div>
+
+      <div className="mt-5 grid gap-4 md:grid-cols-3">
+        {metrics.map(item => (
+          <div key={item.label} className="rounded-card border border-ds-border bg-ds-bg-subtle p-4 dark:border-neutral-800 dark:bg-neutral-900/80">
+            <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-ds-fg-muted dark:text-neutral-400">
+              <item.icon className="h-4 w-4 text-ds-accent" />
+              {item.label}
+            </div>
+            <div className="text-2xl font-black text-ds-fg dark:text-neutral-100">{item.value ?? '-'}</div>
+          </div>
+        ))}
+      </div>
+
+      {interview.videoAnalysis?.summary ? (
+        <div className="mt-5 rounded-card border border-ds-border bg-ds-bg-subtle p-4 dark:border-neutral-800 dark:bg-neutral-900/80">
+          <div className="mb-2 text-sm font-bold text-ds-fg dark:text-neutral-100">视频分析总结</div>
+          <p className="leading-relaxed text-ds-fg-muted dark:text-neutral-300">{interview.videoAnalysis.summary}</p>
+        </div>
+      ) : null}
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-2">
+        {interview.videoAnalysis?.strengths?.length ? (
+          <div className="rounded-card border border-emerald-200/50 bg-emerald-50/70 p-4 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+            <div className="mb-2 font-bold text-emerald-700 dark:text-emerald-400">视频表现亮点</div>
+            <ul className="space-y-2 text-sm text-emerald-900/85 dark:text-emerald-100/85">
+              {interview.videoAnalysis.strengths.map((item, index) => (
+                <li key={index} className="flex items-start gap-2">
+                  <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {interview.videoAnalysis?.improvements?.length ? (
+          <div className="rounded-card border border-amber-200/50 bg-amber-50/70 p-4 dark:border-amber-900/40 dark:bg-amber-950/20">
+            <div className="mb-2 font-bold text-amber-700 dark:text-amber-400">视频表现改进建议</div>
+            <ul className="space-y-2 text-sm text-amber-900/85 dark:text-amber-100/85">
+              {interview.videoAnalysis.improvements.map((item, index) => (
+                <li key={index} className="flex items-start gap-2">
+                  <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
+
+      {(interview.completeVideoDurationSeconds || interview.completeVideoFileSize) ? (
+        <div className="mt-5 flex flex-wrap gap-3 text-sm text-ds-fg-muted dark:text-neutral-400">
+          {interview.completeVideoDurationSeconds ? <span>视频时长：{interview.completeVideoDurationSeconds} 秒</span> : null}
+          {interview.completeVideoFileSize ? <span>文件大小：{(interview.completeVideoFileSize / 1024 / 1024).toFixed(2)} MB</span> : null}
+        </div>
+      ) : null}
+
+      {interview.conversationLog?.length ? (
+        <div className="mt-5 rounded-card border border-ds-border bg-ds-bg-subtle p-4 dark:border-neutral-800 dark:bg-neutral-900/80">
+          <div className="mb-3 flex items-center gap-2 text-sm font-bold text-ds-fg dark:text-neutral-100">
+            <MessageSquareText className="h-4 w-4 text-ds-accent" />
+            对话记录
+          </div>
+          <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
+            {interview.conversationLog.map((entry, index) => (
+              <div key={index} className="rounded-card border border-ds-border bg-ds-bg px-4 py-3 dark:border-neutral-800 dark:bg-neutral-950">
+                <div className="mb-1 text-xs font-bold uppercase tracking-wide text-ds-fg-muted dark:text-neutral-500">
+                  {entry.role === 'ai' ? 'AI 面试官' : '候选人'}
+                </div>
+                <p className="whitespace-pre-wrap break-words text-sm leading-6 text-ds-fg dark:text-neutral-200">{entry.text}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </motion.div>
+  );
+}
+
 // 问答部分组件
 function QuestionsSection({
   answers,
   expandedQuestions,
   toggleQuestion
 }: {
-  answers: any[];
+  answers: AnswerItem[];
   expandedQuestions: Set<number>;
   toggleQuestion: (index: number) => void;
 }) {
@@ -228,7 +349,7 @@ function QuestionCard({
   isExpanded,
   onToggle
 }: {
-  answer: any;
+  answer: AnswerItem;
   index: number;
   isExpanded: boolean;
   onToggle: () => void;

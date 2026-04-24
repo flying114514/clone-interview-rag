@@ -1,5 +1,5 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
-import { getStoredToken } from '../authStorage';
+import { getStoredToken } from '../../authStorage';
 
 /**
  * 未登录时跳转登录页；已登录则渲染子路由（Outlet）

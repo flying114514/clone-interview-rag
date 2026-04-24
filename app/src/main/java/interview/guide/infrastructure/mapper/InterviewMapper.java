@@ -72,6 +72,11 @@ public interface InterviewMapper {
     @Mapping(target = "strengths", source = "strengths")
     @Mapping(target = "improvements", source = "improvements")
     @Mapping(target = "referenceAnswers", source = "referenceAnswers")
+    @Mapping(target = "conversationLog", source = "conversationLog")
+    @Mapping(target = "completeVideoFileUrl", source = "session.completeVideoFileUrl")
+    @Mapping(target = "completeVideoFileSize", source = "session.completeVideoFileSize")
+    @Mapping(target = "completeVideoDurationSeconds", source = "session.completeVideoDurationSeconds")
+    @Mapping(target = "videoAnalysis", source = "videoAnalysis")
     @Mapping(target = "answers", source = "answers")
     InterviewDetailDTO toDetailDTO(
         InterviewSessionEntity session,
@@ -79,6 +84,8 @@ public interface InterviewMapper {
         List<String> strengths,
         List<String> improvements,
         List<Object> referenceAnswers,
+        List<InterviewDetailDTO.ConversationLogEntryDTO> conversationLog,
+        InterviewDetailDTO.VideoAnalysisDTO videoAnalysis,
         List<InterviewDetailDTO.AnswerDetailDTO> answers
     );
 

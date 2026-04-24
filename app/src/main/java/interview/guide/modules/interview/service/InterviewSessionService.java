@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -35,6 +36,7 @@ public class InterviewSessionService {
     private final InterviewSessionCache sessionCache;
     private final ObjectMapper objectMapper;
     private final EvaluateStreamProducer evaluateStreamProducer;
+    private final InterviewPromptService interviewPromptService;
 
     /**
      * 创建新的面试会话
@@ -80,14 +82,27 @@ public class InterviewSessionService {
             request.resumeId(),
             questions,
             0,
-            SessionStatus.CREATED
+            SessionStatus.CREATED,
+            request.effectiveMode(),
+            request.effectiveMaxFollowUps(),
+            request.effectiveVideoEnabled(),
+            request.effectiveAudioEnabled()
         );
 
         // 保存到数据库，并同步生成参考答案
         if (request.resumeId() != null) {
             try {
-                persistenceService.saveSession(sessionId, request.resumeId(),
-                    questions.size(), questions, userId);
+                persistenceService.saveSession(
+                    sessionId,
+                    request.resumeId(),
+                    questions.size(),
+                    questions,
+                    userId,
+                    request.effectiveMode(),
+                    request.effectiveMaxFollowUps(),
+                    request.effectiveVideoEnabled(),
+                    request.effectiveAudioEnabled()
+                );
                 persistenceService.prefetchReferenceAnswers(sessionId);
             } catch (Exception e) {
                 sessionCache.deleteSession(sessionId);
@@ -101,13 +116,22 @@ public class InterviewSessionService {
             }
         }
 
+        InterviewPromptPayload currentPrompt = request.effectiveMode().equalsIgnoreCase("VIDEO") && !questions.isEmpty()
+            ? interviewPromptService.buildPrompt(sessionId, questions.get(0))
+            : null;
+
         return new InterviewSessionDTO(
             sessionId,
             request.resumeText(),
             questions.size(),
             0,
             questions,
-            SessionStatus.CREATED
+            SessionStatus.CREATED,
+            request.effectiveMode(),
+            request.effectiveMaxFollowUps(),
+            request.effectiveVideoEnabled(),
+            request.effectiveAudioEnabled(),
+            currentPrompt
         );
     }
 
@@ -221,7 +245,11 @@ public class InterviewSessionService {
                 entity.getResume().getId(),
                 questions,
                 entity.getCurrentQuestionIndex(),
-                status
+                status,
+                entity.getMode() == null || entity.getMode().isBlank() ? "TEXT" : entity.getMode(),
+                entity.getMaxFollowUps() == null ? 1 : entity.getMaxFollowUps(),
+                Boolean.TRUE.equals(entity.getVideoEnabled()),
+                entity.getAudioEnabled() == null || entity.getAudioEnabled()
             );
 
             log.info("从数据库恢复会话到 Redis: sessionId={}, currentIndex={}, status={}",
@@ -344,11 +372,18 @@ public class InterviewSessionService {
             questions.stream().filter(q -> q.userAnswer() != null && !q.userAnswer().isBlank()).count(),
             questions.size());
 
+        InterviewPromptPayload nextPrompt = null;
+        if (hasNextQuestion && nextQuestion != null) {
+            boolean videoMode = "VIDEO".equalsIgnoreCase(session.getMode());
+            nextPrompt = videoMode ? interviewPromptService.buildPrompt(request.sessionId(), nextQuestion) : null;
+        }
+
         return new SubmitAnswerResponse(
             hasNextQuestion,
             nextQuestion,
             persistedCurrentIndex,
-            questions.size()
+            questions.size(),
+            nextPrompt
         );
     }
 
@@ -391,6 +426,109 @@ public class InterviewSessionService {
         }
 
         log.info("会话 {} 暂存答案: 问题{}", request.sessionId(), index);
+    }
+
+    public InterviewSessionDTO applyVideoInterviewDecision(
+        String sessionId,
+        Integer answeredQuestionIndex,
+        String transcript,
+        InterviewQuestionDTO nextQuestion,
+        InterviewPromptPayload nextPrompt
+    ) {
+        CachedSession session = getOrRestoreSession(sessionId);
+        List<InterviewQuestionDTO> currentQuestions = session.getQuestions(objectMapper);
+        List<InterviewQuestionDTO> updatedQuestions = new ArrayList<>(currentQuestions);
+
+        int answeredPosition = findQuestionPosition(updatedQuestions, answeredQuestionIndex);
+        if (answeredQuestionIndex == null || answeredPosition < 0) {
+            throw new BusinessException(ErrorCode.INTERVIEW_QUESTION_NOT_FOUND, "无效的问题索引: " + answeredQuestionIndex);
+        }
+
+        InterviewQuestionDTO answeredQuestion = updatedQuestions.get(answeredPosition).withAnswer(transcript);
+        updatedQuestions.set(answeredPosition, answeredQuestion);
+
+        int nextPosition = answeredPosition;
+        if (nextQuestion != null) {
+            if (nextQuestion.isFollowUp()) {
+                int uniqueQuestionIndex = findQuestionPosition(updatedQuestions, nextQuestion.questionIndex()) >= 0
+                    ? updatedQuestions.stream().mapToInt(InterviewQuestionDTO::questionIndex).max().orElse(-1) + 1
+                    : nextQuestion.questionIndex();
+                InterviewQuestionDTO normalizedFollowUp = new InterviewQuestionDTO(
+                    uniqueQuestionIndex,
+                    nextQuestion.question(),
+                    nextQuestion.type(),
+                    nextQuestion.category(),
+                    nextQuestion.userAnswer(),
+                    nextQuestion.score(),
+                    nextQuestion.feedback(),
+                    true,
+                    nextQuestion.parentQuestionIndex()
+                );
+                updatedQuestions.add(answeredPosition + 1, normalizedFollowUp);
+                nextPosition = answeredPosition + 1;
+                nextQuestion = normalizedFollowUp;
+            } else {
+                int existingIndex = findQuestionPosition(updatedQuestions, nextQuestion.questionIndex());
+                if (existingIndex >= 0) {
+                    updatedQuestions.set(existingIndex, mergeQuestion(nextQuestion, updatedQuestions.get(existingIndex)));
+                    nextPosition = existingIndex;
+                } else {
+                    updatedQuestions.add(nextQuestion);
+                    nextPosition = updatedQuestions.size() - 1;
+                }
+            }
+        }
+
+        sessionCache.updateQuestions(sessionId, updatedQuestions);
+        sessionCache.updateCurrentIndex(sessionId, nextPosition);
+        sessionCache.updateSessionStatus(sessionId, SessionStatus.IN_PROGRESS);
+
+        try {
+            persistenceService.saveAnswer(
+                sessionId,
+                answeredQuestionIndex,
+                answeredQuestion.question(),
+                answeredQuestion.category(),
+                transcript,
+                0,
+                null
+            );
+            persistenceService.updateSessionQuestionsAndCurrentIndex(sessionId, updatedQuestions, nextPosition);
+            persistenceService.updateSessionStatus(sessionId, InterviewSessionEntity.SessionStatus.IN_PROGRESS);
+        } catch (Exception e) {
+            log.warn("同步视频面试决策失败: {}", e.getMessage(), e);
+        }
+
+        return buildSessionDTO(
+            session,
+            updatedQuestions,
+            nextPosition,
+            SessionStatus.IN_PROGRESS,
+            nextPrompt
+        );
+    }
+
+    private int findQuestionPosition(List<InterviewQuestionDTO> questions, int questionIndex) {
+        for (int i = 0; i < questions.size(); i++) {
+            if (questions.get(i).questionIndex() == questionIndex) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private InterviewQuestionDTO mergeQuestion(InterviewQuestionDTO incoming, InterviewQuestionDTO existing) {
+        return new InterviewQuestionDTO(
+            existing.questionIndex(),
+            incoming.question(),
+            incoming.type(),
+            incoming.category(),
+            existing.userAnswer(),
+            existing.score(),
+            existing.feedback(),
+            incoming.isFollowUp(),
+            incoming.parentQuestionIndex()
+        );
     }
 
     /**
@@ -482,13 +620,31 @@ public class InterviewSessionService {
      */
     private InterviewSessionDTO toDTO(CachedSession session) {
         List<InterviewQuestionDTO> questions = session.getQuestions(objectMapper);
+        InterviewPromptPayload currentPrompt = session.getCurrentIndex() < questions.size()
+            ? interviewPromptService.buildPrompt(session.getSessionId(), questions.get(session.getCurrentIndex()))
+            : null;
+        return buildSessionDTO(session, questions, session.getCurrentIndex(), session.getStatus(), currentPrompt);
+    }
+
+    private InterviewSessionDTO buildSessionDTO(
+        CachedSession session,
+        List<InterviewQuestionDTO> questions,
+        int currentIndex,
+        SessionStatus status,
+        InterviewPromptPayload currentPrompt
+    ) {
         return new InterviewSessionDTO(
             session.getSessionId(),
             session.getResumeText(),
             questions.size(),
-            session.getCurrentIndex(),
+            questions.isEmpty() ? 0 : questions.get(Math.max(0, Math.min(currentIndex, questions.size() - 1))).questionIndex(),
             questions,
-            session.getStatus()
+            status,
+            session.getMode() == null || session.getMode().isBlank() ? "TEXT" : session.getMode(),
+            session.getMaxFollowUps() == null ? 1 : session.getMaxFollowUps(),
+            session.getVideoEnabled() != null && session.getVideoEnabled(),
+            session.getAudioEnabled() == null || session.getAudioEnabled(),
+            currentPrompt
         );
     }
 }

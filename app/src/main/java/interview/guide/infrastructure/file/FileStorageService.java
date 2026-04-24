@@ -54,6 +54,20 @@ public class FileStorageService {
     }
 
     /**
+     * 上传视频面试媒体文件
+     */
+    public String uploadInterviewMedia(MultipartFile file) {
+        return uploadFile(file, "interview-media");
+    }
+
+    /**
+     * 上传完整面试视频
+     */
+    public String uploadInterviewCompleteVideo(MultipartFile file) {
+        return uploadFile(file, "interview-complete-videos");
+    }
+
+    /**
      * 删除知识库文件
      */
     public void deleteKnowledgeBase(String fileKey) {

@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import type {LucideIcon} from 'lucide-react';
 import {knowledgeBaseApi, KnowledgeBaseItem, KnowledgeBaseStats, SortOption, VectorStatus,} from '../api/knowledgebase';
-import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
+import DeleteConfirmDialog from '../components/dialogs/DeleteConfirmDialog';
 
 interface KnowledgeBaseManagePageProps {
   onUpload: () => void;
@@ -125,6 +125,7 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
   const [categories, setCategories] = useState<string[]>([]);
   const [deleteItem, setDeleteItem] = useState<KnowledgeBaseItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [selectedKnowledgeBaseIds, setSelectedKnowledgeBaseIds] = useState<Set<number>>(new Set());
 
   // 分类编辑状态
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
@@ -182,6 +183,10 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
       ]);
       setStats(statsData);
       setKnowledgeBases(kbList);
+      setSelectedKnowledgeBaseIds(prev => {
+        const allowed = new Set(kbList.map(item => item.id));
+        return new Set([...prev].filter(id => allowed.has(id)));
+      });
       setCategories(categoryList);
     } catch (error) {
       console.error('加载数据失败:', error);
@@ -203,6 +208,10 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
       ]);
       setStats(statsData);
       setKnowledgeBases(kbList);
+      setSelectedKnowledgeBaseIds(prev => {
+        const allowed = new Set(kbList.map(item => item.id));
+        return new Set([...prev].filter(id => allowed.has(id)));
+      });
       setCategories(categoryList);
     } catch (error) {
       console.error('加载数据失败:', error);
@@ -253,6 +262,49 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
       await loadData();
     } catch (error) {
       console.error('删除失败:', error);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const allKnowledgeBaseIds = knowledgeBases.map(item => item.id);
+  const allVisibleSelected = allKnowledgeBaseIds.length > 0 && allKnowledgeBaseIds.every(id => selectedKnowledgeBaseIds.has(id));
+
+  const toggleSelectAllVisible = () => {
+    setSelectedKnowledgeBaseIds(prev => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        allKnowledgeBaseIds.forEach(id => next.delete(id));
+      } else {
+        allKnowledgeBaseIds.forEach(id => next.add(id));
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectOne = (id: number) => {
+    setSelectedKnowledgeBaseIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBatchDelete = async () => {
+    const ids = [...selectedKnowledgeBaseIds];
+    if (ids.length === 0) return;
+    if (!window.confirm(`确定删除选中的 ${ids.length} 个知识库吗？`)) return;
+
+    try {
+      setDeleting(true);
+      for (const id of ids) {
+        await knowledgeBaseApi.deleteKnowledgeBase(id);
+      }
+      setSelectedKnowledgeBaseIds(new Set());
+      await loadData();
+    } catch (error) {
+      console.error('批量删除失败:', error);
     } finally {
       setDeleting(false);
     }
@@ -334,6 +386,17 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
           <p className="mt-1 text-white/68">管理您的知识库文件，查看使用统计</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {selectedKnowledgeBaseIds.size > 0 ? (
+            <button
+              type="button"
+              onClick={handleBatchDelete}
+              disabled={deleting}
+              className="inline-flex items-center gap-2 rounded-pill border border-red-300/35 bg-red-500/12 px-4 py-2.5 text-sm font-bold text-red-100 disabled:opacity-50"
+            >
+              <Trash2 className="h-4 w-4" strokeWidth={1.75} />
+              批量删除（{selectedKnowledgeBaseIds.size}）
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={onUpload}
@@ -437,6 +500,9 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
           <table className="w-full">
               <thead className="border-b border-white/10 bg-white/[0.06]">
               <tr>
+                <th className="px-4 py-4 text-left">
+                  <input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAllVisible} />
+                </th>
                   <th className="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wide text-ds-fg-muted dark:text-neutral-500">
                   名称
                 </th>
@@ -466,7 +532,7 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                 return (
                   <Fragment key={folder.category}>
                     <tr key={`folder-${folder.category}`} className="border-b border-white/10 bg-white/[0.03]">
-                      <td colSpan={7} className="px-6 py-3">
+                      <td colSpan={8} className="px-6 py-3">
                         <button
                           type="button"
                           onClick={() => toggleFolder(folder.category)}
@@ -486,6 +552,9 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                         transition={{ delay: index * 0.04 }}
                         className="border-b border-white/10 bg-white/[0.04] transition-colors hover:bg-white/[0.06]"
                       >
+                        <td className="px-4 py-4" onClick={e => e.stopPropagation()}>
+                          <input type="checkbox" checked={selectedKnowledgeBaseIds.has(kb.id)} onChange={() => toggleSelectOne(kb.id)} />
+                        </td>
                         <td className="px-6 py-4 pl-10">
                           <div className="flex items-center gap-3">
                             <FileText className="h-5 w-5 text-ds-fg-muted" strokeWidth={1.75} />
@@ -533,6 +602,9 @@ export default function KnowledgeBaseManagePage({ onUpload, onChat }: KnowledgeB
                   transition={{ delay: index * 0.05 }}
                   className="border-b border-white/10 transition-colors hover:bg-white/[0.06]"
                 >
+                  <td className="px-4 py-4" onClick={e => e.stopPropagation()}>
+                    <input type="checkbox" checked={selectedKnowledgeBaseIds.has(kb.id)} onChange={() => toggleSelectOne(kb.id)} />
+                  </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <FileText className="h-5 w-5 text-ds-fg-muted" strokeWidth={1.75} />

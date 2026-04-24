@@ -10,6 +10,7 @@ import interview.guide.modules.interview.model.CreateInterviewRequest;
 import interview.guide.modules.interview.model.CreateInterviewTaskResponse;
 import interview.guide.modules.interview.model.InterviewCreationTaskStatusResponse;
 import interview.guide.modules.interview.model.InterviewQuestionDTO;
+import interview.guide.modules.interview.model.InterviewPromptPayload;
 import interview.guide.modules.interview.model.InterviewSessionDTO;
 import interview.guide.modules.interview.model.InterviewSessionDTO.SessionStatus;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +32,7 @@ public class InterviewCreationTaskService {
     private final InterviewQuestionService questionService;
     private final InterviewPersistenceService persistenceService;
     private final InterviewSessionCache sessionCache;
+    private final InterviewPromptService interviewPromptService;
 
     public CreateInterviewTaskResponse createTask(CreateInterviewRequest request) {
         long userId = SecurityUtils.requireUserId();
@@ -95,7 +97,7 @@ public class InterviewCreationTaskService {
             }
             List<InterviewQuestionDTO> questions = questionService.generateQuestions(
                 request.resumeText(),
-                request.questionCount(),
+                request.effectiveQuestionCount(),
                 historicalQuestions
             );
 
@@ -105,24 +107,52 @@ public class InterviewCreationTaskService {
                 request.resumeId(),
                 questions,
                 0,
-                SessionStatus.CREATED
+                SessionStatus.CREATED,
+                request.effectiveMode(),
+                request.effectiveMaxFollowUps(),
+                request.effectiveVideoEnabled(),
+                request.effectiveAudioEnabled()
             );
 
             if (request.resumeId() != null) {
                 updateTask(task, AsyncTaskStatus.PROCESSING, "SAVING_SESSION", "正在保存面试会话...", null, null);
-                persistenceService.saveSession(sessionId, request.resumeId(), questions.size(), questions, userId);
+                persistenceService.saveSession(
+                    sessionId,
+                    request.resumeId(),
+                    questions.size(),
+                    questions,
+                    userId,
+                    request.effectiveMode(),
+                    request.effectiveMaxFollowUps(),
+                    request.effectiveVideoEnabled(),
+                    request.effectiveAudioEnabled()
+                );
 
-                updateTask(task, AsyncTaskStatus.PROCESSING, "GENERATING_REFERENCE_ANSWERS", "正在生成主问题参考答案...", null, null);
-                persistenceService.prefetchReferenceAnswers(sessionId);
+                final String createdSessionId = sessionId;
+                CompletableFuture.runAsync(() -> {
+                    try {
+                        persistenceService.prefetchReferenceAnswers(createdSessionId);
+                    } catch (Exception ex) {
+                        log.warn("主问题参考答案后台预生成失败: sessionId={}, error={}", createdSessionId, ex.getMessage());
+                    }
+                });
             }
 
+            InterviewPromptPayload currentPrompt = request.effectiveMode().equalsIgnoreCase("VIDEO") && !questions.isEmpty()
+                ? interviewPromptService.buildPrompt(sessionId, questions.get(0))
+                : null;
             InterviewSessionDTO session = new InterviewSessionDTO(
                 sessionId,
                 request.resumeText(),
                 questions.size(),
                 0,
                 questions,
-                SessionStatus.CREATED
+                SessionStatus.CREATED,
+                request.effectiveMode(),
+                request.effectiveMaxFollowUps(),
+                request.effectiveVideoEnabled(),
+                request.effectiveAudioEnabled(),
+                currentPrompt
             );
             updateTask(task, AsyncTaskStatus.COMPLETED, "COMPLETED", "面试创建完成", null, session);
         } catch (Exception e) {

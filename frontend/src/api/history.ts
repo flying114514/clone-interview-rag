@@ -81,9 +81,28 @@ export interface ResumeDetail {
   interviews: InterviewItem[];
 }
 
+export interface ConversationLogEntry {
+  role: string;
+  text: string;
+}
+
+export interface InterviewVideoAnalysis {
+  overallExpressionScore: number | null;
+  overallGestureScore: number | null;
+  overallConfidenceScore: number | null;
+  summary: string | null;
+  strengths: string[];
+  improvements: string[];
+}
+
 export interface InterviewDetail extends InterviewItem {
   evaluateStatus?: EvaluateStatus;
   evaluateError?: string;
+  conversationLog?: ConversationLogEntry[];
+  completeVideoFileUrl?: string | null;
+  completeVideoFileSize?: number | null;
+  completeVideoDurationSeconds?: number | null;
+  videoAnalysis?: InterviewVideoAnalysis | null;
   answers: AnswerItem[];
 }
 

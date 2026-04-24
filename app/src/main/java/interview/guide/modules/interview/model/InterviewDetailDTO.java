@@ -21,8 +21,26 @@ public record InterviewDetailDTO(
     List<String> strengths,
     List<String> improvements,
     List<Object> referenceAnswers,
+    List<ConversationLogEntryDTO> conversationLog,
+    String completeVideoFileUrl,
+    Long completeVideoFileSize,
+    Integer completeVideoDurationSeconds,
+    VideoAnalysisDTO videoAnalysis,
     List<AnswerDetailDTO> answers
 ) {
+    public record ConversationLogEntryDTO(
+        String role,
+        String text
+    ) {}
+
+    public record VideoAnalysisDTO(
+        Integer overallExpressionScore,
+        Integer overallGestureScore,
+        Integer overallConfidenceScore,
+        String summary,
+        List<String> strengths,
+        List<String> improvements
+    ) {}
     /**
      * 答案详情DTO
      */

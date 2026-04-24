@@ -57,7 +57,7 @@ public class InterviewQuestionService {
         this.systemPromptTemplate = new PromptTemplate(systemPromptResource.getContentAsString(StandardCharsets.UTF_8));
         this.userPromptTemplate = new PromptTemplate(userPromptResource.getContentAsString(StandardCharsets.UTF_8));
         this.outputConverter = new BeanOutputConverter<>(QuestionListDTO.class);
-        this.followUpCount = Math.max(0, Math.min(followUpCount, MAX_FOLLOW_UP_COUNT));
+        this.followUpCount = Math.max(0, Math.min(MAX_FOLLOW_UP_COUNT, followUpCount));
     }
 
     public List<InterviewQuestionDTO> generateQuestions(String resumeText, int questionCount, List<String> historicalQuestions) {
@@ -185,12 +185,7 @@ public class InterviewQuestionService {
                 continue;
             }
             QuestionType type = parseQuestionType(q.type());
-            int mainQuestionIndex = index;
-            questions.add(InterviewQuestionDTO.create(index++, q.question().trim(), type, q.category(), false, null));
-            List<String> followUps = sanitizeFollowUps(q.followUps());
-            for (int i = 0; i < followUps.size(); i++) {
-                questions.add(InterviewQuestionDTO.create(index++, followUps.get(i), type, buildFollowUpCategory(q.category(), i + 1), true, mainQuestionIndex));
-            }
+            questions.add(InterviewQuestionDTO.create(index++, enrichQuestionText(q.question()), type, q.category(), false, null));
         }
         return questions;
     }
@@ -201,6 +196,20 @@ public class InterviewQuestionService {
         } catch (Exception e) {
             return QuestionType.JAVA_BASIC;
         }
+    }
+
+    private String enrichQuestionText(String question) {
+        if (question == null) {
+            return "请结合你最有代表性的项目，完整说明背景、你的职责、关键决策、技术实现与结果复盘。";
+        }
+        String text = question.trim();
+        if (text.isBlank()) {
+            return "请结合你最有代表性的项目，完整说明背景、你的职责、关键决策、技术实现与结果复盘。";
+        }
+        if (text.length() >= 24) {
+            return text;
+        }
+        return text + " 请结合一个具体项目场景，补充说明背景、你的职责、关键决策和最终结果。";
     }
 
     private List<InterviewQuestionDTO> generateDefaultQuestions(String resumeText, int count, List<String> historicalQuestions) {
@@ -215,11 +224,7 @@ public class InterviewQuestionService {
         List<InterviewQuestionDTO> result = new ArrayList<>();
         int index = 0;
         for (QuestionSeed seed : seeds.stream().limit(count).toList()) {
-            result.add(InterviewQuestionDTO.create(index, seed.question(), seed.type(), seed.category(), false, null));
-            int mainQuestionIndex = index++;
-            for (int j = 0; j < followUpCount; j++) {
-                result.add(InterviewQuestionDTO.create(index++, buildFallbackFollowUp(j + 1), seed.type(), buildFollowUpCategory(seed.category(), j + 1), true, mainQuestionIndex));
-            }
+            result.add(InterviewQuestionDTO.create(index++, seed.question(), seed.type(), seed.category(), false, null));
         }
         return result;
     }
@@ -293,13 +298,6 @@ public class InterviewQuestionService {
         return historicalQuestions.stream().filter(item -> item != null && !item.isBlank()).collect(Collectors.joining("\n"));
     }
 
-    private List<String> sanitizeFollowUps(List<String> followUps) {
-        if (followUpCount == 0 || followUps == null || followUps.isEmpty()) {
-            return List.of();
-        }
-        return followUps.stream().filter(item -> item != null && !item.isBlank()).map(String::trim).limit(followUpCount).collect(Collectors.toList());
-    }
-
     private String buildGenerationHint(String resumeText, List<String> historicalQuestions) {
         int resumeHash = Math.abs((resumeText == null ? "" : resumeText).hashCode());
         int historySize = historicalQuestions == null ? 0 : historicalQuestions.size();
@@ -334,17 +332,5 @@ public class InterviewQuestionService {
 
     private String normalizeQuestion(String question) {
         return question == null ? "" : question.replaceAll("\\s+", "").trim().toLowerCase(Locale.ROOT);
-    }
-
-    private String buildFollowUpCategory(String category, int order) {
-        String baseCategory = (category == null || category.isBlank()) ? "追问" : category;
-        return baseCategory + "（追问" + order + "）";
-    }
-
-    private String buildFallbackFollowUp(int order) {
-        if (order == 1) {
-            return "围绕这道题，请你继续说明当时的业务背景、约束条件，以及为什么最终采用这个方案？";
-        }
-        return "如果把这个场景放到更高并发、更多数据量或更严格 SLA 下，你会如何进一步优化或兜底？";
     }
 }

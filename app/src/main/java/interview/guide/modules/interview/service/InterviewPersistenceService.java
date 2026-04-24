@@ -47,7 +47,11 @@ public class InterviewPersistenceService {
     public InterviewSessionEntity saveSession(String sessionId, Long resumeId,
                                               int totalQuestions,
                                               List<InterviewQuestionDTO> questions,
-                                              Long ownerUserId) {
+                                              Long ownerUserId,
+                                              String mode,
+                                              Integer maxFollowUps,
+                                              Boolean videoEnabled,
+                                              Boolean audioEnabled) {
         try {
             Optional<ResumeEntity> resumeOpt = resumeRepository.findByIdAndOwnerUserId(resumeId, ownerUserId);
             if (resumeOpt.isEmpty()) {
@@ -61,6 +65,10 @@ public class InterviewPersistenceService {
             session.setCurrentQuestionIndex(0);
             session.setStatus(InterviewSessionEntity.SessionStatus.CREATED);
             session.setQuestionsJson(objectMapper.writeValueAsString(questions));
+            session.setMode(mode);
+            session.setMaxFollowUps(maxFollowUps);
+            session.setVideoEnabled(videoEnabled);
+            session.setAudioEnabled(audioEnabled);
             
             InterviewSessionEntity saved = sessionRepository.save(session);
             log.info("面试会话已保存: sessionId={}, resumeId={}", sessionId, resumeId);
@@ -119,6 +127,28 @@ public class InterviewPersistenceService {
             session.setCurrentQuestionIndex(index);
             session.setStatus(InterviewSessionEntity.SessionStatus.IN_PROGRESS);
             sessionRepository.save(session);
+        }
+    }
+
+    /**
+     * 更新问题列表与当前问题索引
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void updateSessionQuestionsAndCurrentIndex(String sessionId, List<InterviewQuestionDTO> questions, int currentIndex) {
+        Optional<InterviewSessionEntity> sessionOpt = sessionRepository.findBySessionId(sessionId);
+        if (sessionOpt.isEmpty()) {
+            throw new BusinessException(ErrorCode.INTERVIEW_SESSION_NOT_FOUND);
+        }
+        try {
+            InterviewSessionEntity session = sessionOpt.get();
+            session.setQuestionsJson(objectMapper.writeValueAsString(questions));
+            session.setTotalQuestions(questions.size());
+            session.setCurrentQuestionIndex(currentIndex);
+            session.setStatus(InterviewSessionEntity.SessionStatus.IN_PROGRESS);
+            sessionRepository.save(session);
+        } catch (JacksonException e) {
+            log.error("更新面试问题列表失败: {}", e.getMessage(), e);
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "更新面试会话失败");
         }
     }
     
@@ -345,16 +375,14 @@ public class InterviewPersistenceService {
                 new TypeReference<List<InterviewQuestionDTO>>() {}
             );
 
+            List<ReferenceAnswer> referenceAnswers = new java.util.ArrayList<>();
             List<InterviewAnswerEntity> existingAnswers = answerRepository.findBySession_SessionIdOrderByQuestionIndex(sessionId);
-            java.util.Map<Integer, InterviewAnswerEntity> answerMap = existingAnswers.stream()
+            java.util.Map<Integer, InterviewAnswerEntity> existingAnswerMap = existingAnswers.stream()
                 .collect(java.util.stream.Collectors.toMap(
                     InterviewAnswerEntity::getQuestionIndex,
                     a -> a,
                     (a1, a2) -> a1
                 ));
-
-            List<ReferenceAnswer> referenceAnswers = new java.util.ArrayList<>();
-            List<InterviewAnswerEntity> answersToSave = new java.util.ArrayList<>();
 
             for (InterviewQuestionDTO question : questions) {
                 if (question == null || question.isFollowUp()) {
@@ -368,11 +396,9 @@ public class InterviewPersistenceService {
                 );
                 referenceAnswers.add(generated);
 
-                InterviewAnswerEntity answer = answerMap.get(question.questionIndex());
+                InterviewAnswerEntity answer = existingAnswerMap.get(question.questionIndex());
                 if (answer == null) {
-                    answer = new InterviewAnswerEntity();
-                    answer.setSession(session);
-                    answer.setQuestionIndex(question.questionIndex());
+                    continue;
                 }
 
                 answer.setQuestion(question.question());
@@ -383,13 +409,12 @@ public class InterviewPersistenceService {
                 } else {
                     answer.setKeyPointsJson(null);
                 }
-                answersToSave.add(answer);
             }
 
             session.setReferenceAnswersJson(objectMapper.writeValueAsString(referenceAnswers));
             sessionRepository.save(session);
-            if (!answersToSave.isEmpty()) {
-                answerRepository.saveAll(answersToSave);
+            if (!existingAnswers.isEmpty()) {
+                answerRepository.saveAll(existingAnswers);
             }
             log.info("主问题标准答案预生成完成并已落库: sessionId={}, count={}", sessionId, referenceAnswers.size());
         } catch (Exception e) {
@@ -410,7 +435,7 @@ public class InterviewPersistenceService {
             .filter(json -> json != null && !json.isEmpty())
             .flatMap(json -> {
                 try {
-                    List<InterviewQuestionDTO> questions = objectMapper.readValue(json, 
+                    List<InterviewQuestionDTO> questions = objectMapper.readValue(json,
                         new TypeReference<List<InterviewQuestionDTO>>() {});
                     // 过滤掉追问，只保留主问题作为历史参考
                     return questions.stream()
@@ -424,5 +449,70 @@ public class InterviewPersistenceService {
             .distinct()
             .limit(30) // 核心改动：只保留最近的 30 道题
             .toList();
+    }
+
+    /**
+     * 保存完整面试视频信息
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void saveCompleteInterviewVideo(
+        String sessionId,
+        String videoFileKey,
+        String videoFileUrl,
+        Long videoFileSize,
+        Integer durationSeconds
+    ) {
+        Optional<InterviewSessionEntity> sessionOpt = sessionRepository.findBySessionId(sessionId);
+        if (sessionOpt.isPresent()) {
+            InterviewSessionEntity session = sessionOpt.get();
+            session.setCompleteVideoFileKey(videoFileKey);
+            session.setCompleteVideoFileUrl(videoFileUrl);
+            session.setCompleteVideoFileSize(videoFileSize);
+            session.setCompleteVideoDurationSeconds(durationSeconds);
+            sessionRepository.save(session);
+            log.info("完整面试视频信息已保存: sessionId={}, fileKey={}", sessionId, videoFileKey);
+        }
+    }
+
+    /**
+     * 保存对话记录
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void saveConversationLog(
+        String sessionId,
+        List<interview.guide.modules.interview.model.UploadCompleteInterviewRequest.ConversationLogEntry> conversationLog
+    ) {
+        Optional<InterviewSessionEntity> sessionOpt = sessionRepository.findBySessionId(sessionId);
+        if (sessionOpt.isPresent()) {
+            try {
+                InterviewSessionEntity session = sessionOpt.get();
+                session.setConversationLogJson(objectMapper.writeValueAsString(conversationLog));
+                sessionRepository.save(session);
+                log.info("对话记录已保存: sessionId={}, entries={}", sessionId, conversationLog.size());
+            } catch (Exception e) {
+                log.error("保存对话记录失败: {}", e.getMessage(), e);
+            }
+        }
+    }
+
+    /**
+     * 保存视频分析结果
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void saveVideoAnalysisResult(
+        String sessionId,
+        interview.guide.modules.interview.service.CompleteInterviewVideoService.VideoAnalysisDTO analysisResult
+    ) {
+        Optional<InterviewSessionEntity> sessionOpt = sessionRepository.findBySessionId(sessionId);
+        if (sessionOpt.isPresent()) {
+            try {
+                InterviewSessionEntity session = sessionOpt.get();
+                session.setVideoAnalysisJson(objectMapper.writeValueAsString(analysisResult));
+                sessionRepository.save(session);
+                log.info("视频分析结果已保存: sessionId={}", sessionId);
+            } catch (Exception e) {
+                log.error("保存视频分析结果失败: {}", e.getMessage(), e);
+            }
+        }
     }
 }

@@ -1,16 +1,13 @@
-import {useMemo, useRef} from 'react';
+import { useMemo, useRef } from 'react';
 import {Virtuoso, type VirtuosoHandle} from 'react-virtuoso';
 import {
   ArrowUp,
   Bookmark,
   ClipboardList,
   Loader2,
-  Maximize2,
-  Paperclip,
-  Sparkles,
 } from 'lucide-react';
-import type {InterviewQuestion, InterviewSession} from '../../types/interview';
-import type {InterviewChatMessage} from '../../types/interviewChat';
+import type { InterviewQuestion, InterviewSession } from '../../types/interview';
+import type { InterviewChatMessage } from '../../types/interviewChat';
 import {formatDateTime} from '../../utils/date';
 import MessageItem from './MessageItem';
 
@@ -34,7 +31,6 @@ export interface ChatAreaProps {
   error?: string;
 }
 
-const QUICK_CHIPS = ['结论先行', '结合项目', '控制篇幅'];
 
 export default function ChatArea({
   session,
@@ -105,9 +101,6 @@ export default function ChatArea({
     <div className="relative z-10 flex min-h-0 flex-1 flex-col bg-transparent text-white">
       <header className="shrink-0 border-b border-white/10 bg-black/18 px-4 py-3 backdrop-blur-[22px] sm:px-8">
         <div className="mx-auto flex max-w-3xl items-center gap-2">
-          <button type="button" className={toolbarIconBtn} aria-label="全屏（占位）">
-            <Maximize2 className="h-[18px] w-[18px]" strokeWidth={1.75} />
-          </button>
 
           <div className="min-w-0 flex-1 flex justify-center">
             <button
@@ -201,20 +194,6 @@ export default function ChatArea({
 
       <footer className="shrink-0 border-t border-white/10 bg-black/18 px-4 pb-5 pt-3 backdrop-blur-[22px] sm:px-8">
         <div className="mx-auto max-w-3xl space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-white/55">
-              <Sparkles className="h-3.5 w-3.5 text-cyan-200" />
-              写作提示
-            </span>
-            {QUICK_CHIPS.map(label => (
-              <span
-                key={label}
-                className="rounded-pill border border-white/12 bg-white/[0.07] px-3 py-1 text-[12px] font-semibold text-white/76 backdrop-blur-sm"
-              >
-                {label}
-              </span>
-            ))}
-          </div>
 
           <div className="min-h-[1.25rem] text-[12px]">
             {saveLine ? (
@@ -235,9 +214,6 @@ export default function ChatArea({
           </div>
 
           <div className="flex items-end gap-2 rounded-[28px] border border-white/12 bg-white/[0.08] p-2 pl-3 shadow-[0_18px_40px_rgba(2,6,23,0.30)] backdrop-blur-[22px]">
-            <button type="button" className="mb-1 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-pill text-white/48" aria-label="附件（占位）">
-              <Paperclip className="h-[18px] w-[18px]" strokeWidth={1.75} />
-            </button>
             <textarea
               value={answer}
               onChange={e => onAnswerChange(e.target.value)}

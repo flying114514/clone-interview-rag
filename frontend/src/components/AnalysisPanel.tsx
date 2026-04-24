@@ -88,13 +88,13 @@ export default function AnalysisPanel({
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case '高':
-        return 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-400';
+        return 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-900/60';
       case '中':
-        return 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400';
+        return 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900/60';
       case '低':
-        return 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-400';
+        return 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-900/60';
       default:
-        return 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-ds-fg dark:text-neutral-200';
+        return 'bg-slate-50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800';
     }
   };
 
@@ -406,19 +406,19 @@ function SuggestionSection({
 }) {
   const priorityColors: Record<string, { bg: string; text: string; border: string }> = {
     '高': {
-      bg: 'bg-red-400/14',
-      text: 'text-red-100',
-      border: 'bg-red-300/24'
+      bg: 'bg-red-100 dark:bg-red-400/14',
+      text: 'text-red-700 dark:text-red-100',
+      border: 'bg-red-300/30 dark:bg-red-300/24'
     },
     '中': {
-      bg: 'bg-amber-400/14',
-      text: 'text-amber-100',
-      border: 'bg-amber-300/24'
+      bg: 'bg-amber-100 dark:bg-amber-400/14',
+      text: 'text-amber-700 dark:text-amber-100',
+      border: 'bg-amber-300/30 dark:bg-amber-300/24'
     },
     '低': {
-      bg: 'bg-blue-400/14',
-      text: 'text-blue-100',
-      border: 'bg-blue-300/24'
+      bg: 'bg-blue-100 dark:bg-blue-400/14',
+      text: 'text-blue-700 dark:text-blue-100',
+      border: 'bg-blue-300/30 dark:bg-blue-300/24'
     }
   };
 
@@ -450,8 +450,8 @@ function SuggestionSection({
               </span>
             </div>
             <div className="mb-2">
-              <p className="mb-1 font-semibold text-white">{s.issue || '问题描述'}</p>
-              <p className="text-sm leading-relaxed text-white/82">{s.recommendation || s}</p>
+              <p className="mb-1 font-semibold text-slate-900 dark:text-slate-100">{s.issue || '问题描述'}</p>
+              <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">{s.recommendation || s}</p>
             </div>
           </motion.div>
         ))}
