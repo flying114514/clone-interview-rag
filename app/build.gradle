@@ -13,12 +13,14 @@ group = 'com.interview'
 version = '0.0.1-SNAPSHOT'
 
 repositories {
-    // 网络受限场景优先走国内镜像，降低容器内 TLS 握手失败概率
+    // 优先官方源，避免部分镜像 TLS 握手不稳定导致构建失败
+    mavenCentral()
+    maven { url 'https://repo.spring.io/milestone' }
+
+    // 备用镜像（网络受限时再命中）
     maven { url 'https://maven.aliyun.com/repository/public/' }
     maven { url 'https://maven.aliyun.com/repository/spring/' }
     maven { url 'https://maven.aliyun.com/repository/gradle-plugin/' }
-    mavenCentral()
-    maven { url 'https://repo.spring.io/milestone' }
 }
 
 configurations.configureEach {

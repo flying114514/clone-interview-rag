@@ -9,6 +9,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.ai.converter.BeanOutputConverter;
+import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
@@ -48,13 +51,23 @@ public class CompleteInterviewVideoService {
         InterviewPersistenceService interviewPersistenceService,
         ChatClient.Builder chatClientBuilder,
         StructuredOutputInvoker structuredOutputInvoker,
+        @Value("${APP_AI_VIDEO_ANALYSIS_ENABLED:true}") boolean videoAnalysisEnabled,
+        @Value("${APP_AI_VIDEO_ANALYSIS_BASE_URL:https://generativelanguage.googleapis.com/v1beta/openai}") String videoAnalysisBaseUrl,
+        @Value("${APP_AI_VIDEO_ANALYSIS_API_KEY:${AI_GEMINI_API_KEY:}}") String videoAnalysisApiKey,
+        @Value("${APP_AI_VIDEO_ANALYSIS_MODEL:gemini-2.0-flash}") String videoAnalysisModel,
         @Value("classpath:prompts/video-analysis-system.st") Resource videoAnalysisSystemPromptResource,
         @Value("classpath:prompts/video-analysis-user.st") Resource videoAnalysisUserPromptResource
     ) throws IOException {
         this.fileStorageService = fileStorageService;
         this.interviewSessionService = interviewSessionService;
         this.interviewPersistenceService = interviewPersistenceService;
-        this.chatClient = chatClientBuilder.build();
+        this.chatClient = buildVideoAnalysisChatClient(
+            chatClientBuilder,
+            videoAnalysisEnabled,
+            videoAnalysisBaseUrl,
+            videoAnalysisApiKey,
+            videoAnalysisModel
+        );
         this.structuredOutputInvoker = structuredOutputInvoker;
         this.videoAnalysisSystemPromptTemplate = new PromptTemplate(
             videoAnalysisSystemPromptResource.getContentAsString(StandardCharsets.UTF_8)
@@ -163,6 +176,33 @@ public class CompleteInterviewVideoService {
             log.warn("视频分析失败，使用兜底策略: sessionId={}, error={}", sessionId, e.getMessage());
             return buildFallbackAnalysis(transcripts, durationSeconds);
         }
+    }
+
+    private ChatClient buildVideoAnalysisChatClient(
+        ChatClient.Builder defaultBuilder,
+        boolean enabled,
+        String baseUrl,
+        String apiKey,
+        String model
+    ) {
+        if (!enabled || apiKey == null || apiKey.isBlank()) {
+            return defaultBuilder.build();
+        }
+        OpenAiApi openAiApi = OpenAiApi.builder()
+            .baseUrl(baseUrl)
+            .apiKey(apiKey)
+            .completionsPath("/chat/completions")
+            .build();
+        OpenAiChatModel videoModel = OpenAiChatModel.builder()
+            .openAiApi(openAiApi)
+            .defaultOptions(
+                OpenAiChatOptions.builder()
+                    .model(model)
+                    .temperature(0.2)
+                    .build()
+            )
+            .build();
+        return ChatClient.builder(videoModel).build();
     }
 
     private String formatConversationLog(List<UploadCompleteInterviewRequest.ConversationLogEntry> conversationLog) {

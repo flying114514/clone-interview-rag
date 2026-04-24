@@ -17,6 +17,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.ai.converter.BeanOutputConverter;
+import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
@@ -68,6 +71,10 @@ public class InterviewMediaAnalysisService {
         TranscriptRefinementService transcriptRefinementService,
         ChatClient.Builder chatClientBuilder,
         StructuredOutputInvoker structuredOutputInvoker,
+        @Value("${APP_AI_VIDEO_ANALYSIS_ENABLED:true}") boolean videoAnalysisEnabled,
+        @Value("${APP_AI_VIDEO_ANALYSIS_BASE_URL:https://generativelanguage.googleapis.com/v1beta/openai}") String videoAnalysisBaseUrl,
+        @Value("${APP_AI_VIDEO_ANALYSIS_API_KEY:${AI_GEMINI_API_KEY:}}") String videoAnalysisApiKey,
+        @Value("${APP_AI_VIDEO_ANALYSIS_MODEL:gemini-2.0-flash}") String videoAnalysisModel,
         @Value("classpath:prompts/video-round-analysis-system.st") Resource analysisSystemPromptResource,
         @Value("classpath:prompts/video-round-analysis-user.st") Resource analysisUserPromptResource
     ) throws IOException {
@@ -77,7 +84,13 @@ public class InterviewMediaAnalysisService {
         this.interviewArtifactStorageService = interviewArtifactStorageService;
         this.interviewPromptService = interviewPromptService;
         this.transcriptRefinementService = transcriptRefinementService;
-        this.chatClient = chatClientBuilder.build();
+        this.chatClient = buildVideoAnalysisChatClient(
+            chatClientBuilder,
+            videoAnalysisEnabled,
+            videoAnalysisBaseUrl,
+            videoAnalysisApiKey,
+            videoAnalysisModel
+        );
         this.structuredOutputInvoker = structuredOutputInvoker;
         this.analysisSystemPromptTemplate = new PromptTemplate(
             analysisSystemPromptResource.getContentAsString(StandardCharsets.UTF_8)
@@ -314,6 +327,33 @@ public class InterviewMediaAnalysisService {
         } catch (Exception e) {
             log.warn("保存面试轮次制品失败: sessionId={}, roundId={}, error={}", session.sessionId(), currentRound.roundId(), e.getMessage());
         }
+    }
+
+    private ChatClient buildVideoAnalysisChatClient(
+        ChatClient.Builder defaultBuilder,
+        boolean enabled,
+        String baseUrl,
+        String apiKey,
+        String model
+    ) {
+        if (!enabled || apiKey == null || apiKey.isBlank()) {
+            return defaultBuilder.build();
+        }
+        OpenAiApi openAiApi = OpenAiApi.builder()
+            .baseUrl(baseUrl)
+            .apiKey(apiKey)
+            .completionsPath("/chat/completions")
+            .build();
+        OpenAiChatModel videoModel = OpenAiChatModel.builder()
+            .openAiApi(openAiApi)
+            .defaultOptions(
+                OpenAiChatOptions.builder()
+                    .model(model)
+                    .temperature(0.2)
+                    .build()
+            )
+            .build();
+        return ChatClient.builder(videoModel).build();
     }
 
     private InterviewQuestionDTO resolveQuestion(InterviewSessionDTO session, Integer questionIndex) {
